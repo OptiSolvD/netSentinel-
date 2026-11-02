@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+node_modules/
+
+# Large or locally generated data and model artifacts
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+ml/artifacts/*
+!ml/artifacts/.gitkeep
+
+# Generated evaluation output
+ml/results/metrics/*
+ml/results/plots/*
+ml/results/reports/*
