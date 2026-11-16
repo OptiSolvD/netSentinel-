@@ -1,54 +1,98 @@
-# NetSentinel
+# NetSentinel: Multi-Class Network Intrusion Detection System
 
-NetSentinel is an intrusion-detection project that combines machine learning
-experimentation, a prediction API, a web interface, and deployment
-configuration. The repository is structured below as a planned project layout.
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![scikit-learn 1.8.0](https://img.shields.io/badge/scikit--learn-1.8.0-orange.svg)](https://scikit-learn.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.124.4-green.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/Frontend-React-cyan.svg)](https://react.dev/)
 
-## Project structure
+NetSentinel is a production-grade Network Intrusion Detection System (NIDS) designed on the UNSW-NB15 benchmark dataset. It features a leak-free machine learning training pipeline, a high-throughput FastAPI inference engine with real-time 5-stage pipeline telemetry, and an interactive security operations dashboard.
 
-| Directory | Responsibility |
-|---|---|
-| `docs/` | Project documentation, architecture, implementation plan, and screenshots |
-| `data/raw/` | Original downloaded UNSW-NB15 files |
-| `data/processed/` | Cleaned or transformed datasets that are saved for reuse |
-| `data/samples/` | Small sample CSV files for application testing |
-| `ml/notebooks/` | Exploratory analysis, model experiments, and visualizations |
-| `ml/src/` | Reusable Python scripts for preprocessing, training, prediction, and evaluation |
-| `ml/artifacts/` | Final trained model and preprocessing pipeline |
-| `ml/results/` | Metrics, plots, and evaluation reports |
-| `backend/` | FastAPI application and prediction services |
-| `frontend/` | React user interface |
-| `deployment/` | AWS EC2 setup and Nginx configuration |
+---
 
-## Optional components
+## 1. Project Highlights
 
-This is the complete planned structure, not a requirement to implement every
-file immediately. Authentication, database, and other optional modules may
-remain unused if those features are not selected. Empty directories may be
-populated, added incrementally, or omitted in later implementations.
+- **Leak-Free Clean Pipeline (v2)**: Completely eliminates `id` scenario leakage, drops 33,862 duplicate training flows, and employs 5-fold chronological block-grouped cross-validation.
+- **6-Class Taxonomy**: Categorizes network flows into `Normal`, `Exploits`, `Fuzzers`, `DoS`, `Analysis`, and `Backdoor`.
+- **High Attack Sensitivity**: Catches **95.38%** of all attacks on the official held-out test set (59,543 flows) at **69,290 rows/sec**.
+- **Real Pipeline Telemetry (No Fake Animations)**: Real server execution metrics for every stepper stage (`file_received`, `validation`, `preprocessing`, `prediction`, `results`).
+- **Dual-Model Real-Time Comparison**: Simultaneously runs `RandomForestClassifier` (primary) and `DecisionTreeClassifier` (secondary), computing instant agreement rates and highlighting disagreement rows.
+- **Tree-Level Explainability**: Inspects Decision Tree rule paths (`sbytes <= 1200.0`, `sttl > 60.0`) and Random Forest 100-tree voting distributions on demand.
 
-## Data and model artifacts
+---
 
-Large original datasets and trained model artifacts should generally not be
-committed to Git. Keep them in the locations above for local development or
-store them in an external artifact repository. The repository should contain
-the reproducible preprocessing, training, and download instructions instead.
+## 2. Repository Layout
 
-### UNSW-NB15 dataset
+```text
+netsentinel/
+├── data/
+│   ├── raw/                  <-- UNSW-NB15 raw CSV files
+│   ├── processed/            <-- clean_train.csv and clean_test.csv (gitignored)
+│   └── samples/              <-- Pre-packaged demo CSVs (sample_traffic, sample_attacks, etc.)
+├── ml/
+│   ├── artifacts/            <-- model.joblib and model_metadata.json
+│   ├── notebooks/            <-- v1 retrospectives and v2 clean experiment notebooks
+│   ├── src/                  <-- Clean pipeline (config, preprocess, features, train, evaluate, predict)
+│   └── results/              <-- final_metrics.json, plots, and markdown audit reports
+├── backend/
+│   ├── app/                  <-- FastAPI application (main.py)
+│   ├── tests/                <-- Comprehensive test suite (11 passed tests)
+│   └── requirements.txt      <-- Pinned dependencies (scikit-learn==1.8.0)
+├── frontend/                 <-- React application & dashboard components
+├── docs/                     <-- API contract, decisions log, exploration notes
+└── README.md                 <-- Master project documentation
+```
 
-1. Obtain UNSW-NB15 from its official source or another approved dataset host.
-2. Follow the dataset provider's license and access requirements.
-3. Place the original downloaded files in `data/raw/`.
-4. Run the documented preprocessing workflow to create datasets in
-   `data/processed/`.
-5. Small, non-sensitive examples may be stored in `data/samples/` for API and
-   UI testing.
+---
 
-### Trained model
+## 3. Quickstart & Execution Guide
 
-1. Run the training pipeline in `ml/src/train.py`.
-2. Save the final model and preprocessing pipeline in `ml/artifacts/`.
-3. If Git-based distribution is unsuitable because files are large, publish
-   the artifacts externally and record the download location and checksum.
-4. Keep the exact training configuration, software versions, metrics, and
-   evaluation report under `ml/results/`.
+### 3.1. Clone and Switch to Clean Branch
+```bash
+git checkout ml/clean-training
+```
+
+### 3.2. Machine Learning Pipeline Execution
+To reproduce the clean training pipeline from scratch:
+```bash
+# 1. Preprocess raw data (drop id, deduplicate train set, assign block groups)
+python ml/src/preprocess.py
+
+# 2. Run block-grouped cross validation on baselines and candidate models
+python ml/src/train.py
+
+# 3. Refit winning model and run the single official test set evaluation
+python ml/src/evaluate.py
+```
+
+### 3.3. Run Backend API Tests
+```bash
+python -m pytest backend/tests/
+```
+All 11 tests pass covering schema validation, `id` exclusion, missing columns, unseen categorical values, unlabeled traffic, and on-demand tree explanations.
+
+### 3.4. Launch Backend API Server
+```bash
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+Interactive OpenAPI documentation will be accessible at: `http://localhost:8000/docs`.
+
+### 3.5. Launch Frontend Dashboard
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## 4. Key API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/health` | Service health, model version, and class list |
+| `POST` | `/api/v1/validate` | Validates CSV columns against 42 expected network features |
+| `POST` | `/api/v1/predict` | End-to-end inference returning 5-stage pipeline telemetry, summary, and predictions |
+| `POST` | `/api/v1/explain` | On-demand single row explanation (DT decision path + RF tree votes) |
+| `GET` | `/api/v1/training-context` | Static offline dataset statistics and baseline comparisons |
+
+For full request/response schemas, refer to [docs/api_contract.md](file:///d:/netsentinel/docs/api_contract.md).
