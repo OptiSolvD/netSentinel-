@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.7076849166995521,
+  "macro_f1": 0.5462978279314352,
+  "weighted_f1": 0.7279794599103712,
+  "attack_recall": 0.5120400984706811,
+  "normal_false_positive_rate": 0.07935911290701499,
+  "fit_seconds": 17.07163419999415,
+  "train_rows": 119841,
+  "test_rows_evaluated": 58283,
+  "excluded_test_classes": [
+    "Analysis",
+    "Backdoor"
+  ],
+  "excluded_test_rows": 1260
+}

@@ -1,0 +1,3 @@
+experiment,model,macro_f1,accuracy,normal_false_positive_rate,minority_recall_summary
+Six-class selected,Original Random Forest,0.5177235294503689,0.7981228254713164,0.0809821428571428,Analysis=0.107; Backdoor=0.146; DoS=0.172
+Four-class selected,Decision Tree,0.6984839768644383,0.7950686303141558,0.0859821428571428,Exploits=0.820; Fuzzers=0.664; DoS=0.378
