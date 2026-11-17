@@ -48,6 +48,14 @@ FINAL_METRICS_PATH: Path = METRICS_DIR / "final_metrics.json"
 MODEL_ARTIFACT_PATH: Path = ARTIFACTS_DIR / "model.joblib"
 METADATA_ARTIFACT_PATH: Path = ARTIFACTS_DIR / "model_metadata.json"
 
+V3_MODEL_DIR: Path = ARTIFACTS_DIR / "v3"
+V3_MODEL_ARTIFACT_PATH: Path = V3_MODEL_DIR / "final_four_class_model.joblib"
+V3_METADATA_ARTIFACT_PATH: Path = V3_MODEL_DIR / "model_metadata.json"
+V3_FINAL_METRICS_PATH: Path = METRICS_DIR / "v3" / "final_test_metrics.json"
+V3_MODEL_NAME: str = "DecisionTreeClassifier"
+V3_MODEL_VERSION: str = "v3-four-class"
+V3_CLASSES: List[str] = ["Normal", "Exploits", "Fuzzers", "DoS"]
+
 # Ensure runtime directories exist
 for p in [PROCESSED_DATA_DIR, ARTIFACTS_DIR, METRICS_DIR, PLOTS_DIR, REPORTS_DIR, SAMPLES_DIR]:
     p.mkdir(parents=True, exist_ok=True)

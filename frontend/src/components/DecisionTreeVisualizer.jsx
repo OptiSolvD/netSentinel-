@@ -31,13 +31,10 @@ export default function DecisionTreeVisualizer({ explanation, selectedRow }) {
     Exploits: '#ef4444',
     Fuzzers: '#f97316',
     DoS: '#eab308',
-    Analysis: '#8b5cf6',
-    Backdoor: '#ec4899',
   };
 
   const finalClass = explanation.predicted_class || 'Exploits';
   const leafColor = classColors[finalClass] || '#38bdf8';
-  const secondaryClass = explanation.secondary_prediction || finalClass;
 
   // Set of node IDs traversed by this sample
   const traversedNodeIds = new Set(pathDetails.map((n) => n.node_id));
@@ -103,7 +100,7 @@ export default function DecisionTreeVisualizer({ explanation, selectedRow }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: leafColor, boxShadow: `0 0 10px ${leafColor}` }} />
             <span style={{ fontSize: '1.4rem', fontWeight: 800, color: leafColor }}>
-              {secondaryClass}
+              {finalClass}
             </span>
             <span style={{ fontSize: '0.8rem', color: '#94a3b8', background: '#1e293b', padding: '2px 8px', borderRadius: 4, border: '1px solid #334155' }}>
               Leaf Node #{pathDetails[pathDetails.length - 1]?.node_id || 'End'}
@@ -309,104 +306,48 @@ export default function DecisionTreeVisualizer({ explanation, selectedRow }) {
       {viewMode === 'tree_hierarchy' && (
         <div>
           <div style={{ marginBottom: 12, fontSize: '0.75rem', color: '#94a3b8' }}>
-            Visual CART topology up to Depth 3 with the active prediction path highlighted in cyan.
+            Fitted v3 CART topology up to depth 3 with the active prediction path highlighted.
           </div>
 
           {loadingTree ? (
             <div style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>Loading Decision Tree topology...</div>
+          ) : !treeStructure ? (
+            <div style={{ background: '#451a1a', border: '1px solid #ef4444', color: '#fca5a5', padding: 14, borderRadius: 6 }}>
+              The fitted tree topology could not be loaded.
+            </div>
           ) : (
-            <div style={{ background: '#050811', borderRadius: 8, padding: 16, border: '1px solid #1e293b', overflowX: 'auto' }}>
-              {/* ASCII / Visual Flow Representation of Tree Root */}
-              <div style={{ minWidth: 600, textAlign: 'center' }}>
-                {/* Level 0: Root */}
-                <div style={{ display: 'inline-block', margin: '0 auto' }}>
-                  <div
-                    style={{
-                      background: traversedNodeIds.has(0) ? '#1e3a5f' : '#0f172a',
-                      border: `2px solid ${traversedNodeIds.has(0) ? '#38bdf8' : '#334155'}`,
-                      borderRadius: 6,
-                      padding: '8px 14px',
-                      display: 'inline-block',
-                      boxShadow: traversedNodeIds.has(0) ? '0 0 12px #38bdf866' : 'none',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: 700 }}>Root Node #0 {traversedNodeIds.has(0) && '● ACTIVE PATH'}</div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f8fafc', fontFamily: 'monospace' }}>sttl &lt;= 61.00?</div>
-                    <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>gini=0.594 | samples=89,725 | class=Normal</div>
-                  </div>
-                </div>
-
-                {/* Branch Connectors */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 140, margin: '6px 0', fontSize: '0.85rem', fontWeight: 700, color: '#38bdf8' }}>
-                  <span>/ (Yes &lt;= 61.0)</span>
-                  <span>\ (No &gt; 61.0)</span>
-                </div>
-
-                {/* Level 1 Children */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 40, marginTop: 4 }}>
-                  {/* Left Child: Node 1 */}
-                  <div
-                    style={{
-                      background: traversedNodeIds.has(1) ? '#1e3a5f' : '#0f172a',
-                      border: `2px solid ${traversedNodeIds.has(1) ? '#38bdf8' : '#334155'}`,
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      width: 220,
-                      boxShadow: traversedNodeIds.has(1) ? '0 0 12px #38bdf866' : 'none',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.65rem', color: '#38bdf8', fontWeight: 700 }}>Node #1 {traversedNodeIds.has(1) && '● ACTIVE'}</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc', fontFamily: 'monospace' }}>sinpkt &lt;= 0.0005?</div>
-                    <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>gini=0.001 | samples=39,840</div>
-                  </div>
-
-                  {/* Right Child: Node 24 */}
-                  <div
-                    style={{
-                      background: traversedNodeIds.has(24) ? '#1e3a5f' : '#0f172a',
-                      border: `2px solid ${traversedNodeIds.has(24) ? '#38bdf8' : '#334155'}`,
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      width: 220,
-                      boxShadow: traversedNodeIds.has(24) ? '0 0 12px #38bdf866' : 'none',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.65rem', color: '#f59e0b', fontWeight: 700 }}>Node #24 {traversedNodeIds.has(24) && '● ACTIVE'}</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc', fontFamily: 'monospace' }}>ct_srv_dst &lt;= 1.50?</div>
-                    <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>gini=0.697 | samples=49,885</div>
-                  </div>
-                </div>
-
-                {/* Sub Branch Connectors */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 60, margin: '6px 0', fontSize: '0.75rem', color: '#64748b' }}>
-                  <span>/ \</span>
-                  <span style={{ marginLeft: 160 }}>/ \</span>
-                </div>
-
-                {/* Level 2 Sub-Branches */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 4 }}>
-                  <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 4, padding: 6, width: 120, fontSize: '0.65rem', color: '#94a3b8' }}>
-                    Node #2 (Normal leaf)
-                  </div>
-                  <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 4, padding: 6, width: 120, fontSize: '0.65rem', color: '#94a3b8' }}>
-                    Node #23 (Fuzzers leaf)
-                  </div>
-                  <div style={{ background: traversedNodeIds.has(25) ? '#1e3a5f' : '#0f172a', border: `1px solid ${traversedNodeIds.has(25) ? '#38bdf8' : '#334155'}`, borderRadius: 4, padding: 6, width: 130, fontSize: '0.65rem', color: '#cbd5e1' }}>
-                    Node #25 (ct_state_ttl)
-                  </div>
-                  <div style={{ background: traversedNodeIds.has(812) ? '#1e3a5f' : '#0f172a', border: `1px solid ${traversedNodeIds.has(812) ? '#38bdf8' : '#334155'}`, borderRadius: 4, padding: 6, width: 130, fontSize: '0.65rem', color: '#cbd5e1' }}>
-                    Node #812 (sttl &gt; 159)
-                  </div>
-                </div>
-
-                {/* Leaf Node Callout */}
-                <div style={{ marginTop: 24, padding: 12, background: '#0f172a', borderRadius: 6, border: `1px solid ${leafColor}`, display: 'inline-block' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Terminal Leaf Reached by Flow:</span>
-                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: leafColor }}>
-                    {secondaryClass} (Node #{pathDetails[pathDetails.length - 1]?.node_id})
-                  </div>
-                </div>
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+              {Object.values(treeStructure.nodes)
+                .sort((left, right) => left.depth - right.depth || left.id - right.id)
+                .map((node) => {
+                  const isActive = traversedNodeIds.has(node.id);
+                  return (
+                    <div
+                      key={node.id}
+                      style={{
+                        background: isActive ? '#1e3a5f' : '#0f172a',
+                        border: `1px solid ${isActive ? '#38bdf8' : '#334155'}`,
+                        borderRadius: 6,
+                        padding: 10,
+                      }}
+                    >
+                      <div style={{ fontSize: '0.68rem', color: isActive ? '#38bdf8' : '#94a3b8', fontWeight: 700 }}>
+                        Node #{node.id} · depth {node.depth}{isActive ? ' · ACTIVE PATH' : ''}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#f8fafc', marginTop: 4 }}>
+                        {node.is_leaf ? `Leaf: ${node.predicted_class}` : `${node.feature} ≤ ${node.threshold}`}
+                      </div>
+                      <div style={{ fontSize: '0.66rem', color: '#94a3b8', marginTop: 3 }}>
+                        Gini {node.gini} · {node.samples.toLocaleString()} samples
+                      </div>
+                      {!node.is_leaf && (
+                        <div style={{ fontSize: '0.66rem', color: '#64748b', marginTop: 3 }}>
+                          Children: #{node.left} / #{node.right}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>

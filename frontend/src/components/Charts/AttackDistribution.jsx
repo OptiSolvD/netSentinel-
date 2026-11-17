@@ -10,8 +10,6 @@ export default function AttackDistribution({ categoryCounts, confidenceDist }) {
     Exploits: '#ef4444',
     Fuzzers: '#f97316',
     DoS: '#eab308',
-    Analysis: '#8b5cf6',
-    Backdoor: '#ec4899',
   };
 
   return (
@@ -19,7 +17,7 @@ export default function AttackDistribution({ categoryCounts, confidenceDist }) {
       {/* Category Counts Breakdown */}
       <div style={{ background: '#1e293b', padding: 16, borderRadius: 8, border: '1px solid #334155' }}>
         <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#f8fafc' }}>
-          Taxonomy Breakdown (6 Classes)
+          Taxonomy Breakdown (4 Classes)
         </h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Object.entries(categoryCounts).map(([cat, count]) => {

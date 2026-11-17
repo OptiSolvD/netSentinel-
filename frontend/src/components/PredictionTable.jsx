@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { explainRow } from '../services/api';
 import DecisionTreeVisualizer from './DecisionTreeVisualizer';
-import RandomForestVotingSim from './RandomForestVotingSim';
 
-export default function PredictionTable({ predictions, rawRows, agreementRate }) {
+export default function PredictionTable({ predictions, rawRows }) {
   const [filter, setFilter] = useState('all');
   const [selectedRow, setSelectedRow] = useState(null);
   const [explanation, setExplanation] = useState(null);
+  const [explanationError, setExplanationError] = useState(null);
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [page, setPage] = useState(0);
   const pageSize = 15;
@@ -16,13 +16,13 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
   // Filtering
   const filtered = predictions.filter((p) => {
     if (filter === 'attacks') return p.is_attack;
-    if (filter === 'disagreements') return !p.secondary_prediction.agrees_with_primary;
     if (filter === 'low_confidence') return p.is_low_confidence;
+    if (filter === 'unsupported') return p.ground_truth?.has_ground_truth && !p.ground_truth.is_supported;
     if (filter === 'false_positives') {
       return p.ground_truth?.has_ground_truth && p.ground_truth.actual_class === 'Normal' && p.is_attack;
     }
     if (filter === 'false_negatives') {
-      return p.ground_truth?.has_ground_truth && p.ground_truth.actual_class !== 'Normal' && !p.is_attack;
+      return p.ground_truth?.has_ground_truth && p.ground_truth.is_supported && p.ground_truth.actual_class !== 'Normal' && !p.is_attack;
     }
     return true;
   });
@@ -33,38 +33,14 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
   const handleRowClick = async (pred) => {
     setSelectedRow(pred);
     setExplanation(null);
+    setExplanationError(null);
     setLoadingExplain(true);
     try {
       const rowData = pred.features || (rawRows ? rawRows[pred.row_index] : {});
       const exp = await explainRow(rowData);
       setExplanation(exp);
     } catch (err) {
-      console.error('Failed to fetch explanation', err);
-      // Fallback local explanation
-      setExplanation({
-        predicted_class: pred.predicted_class,
-        secondary_prediction: pred.secondary_prediction?.predicted_class || pred.predicted_class,
-        confidence: pred.confidence,
-        probabilities: pred.probabilities,
-        decision_tree_path: [
-          'sttl > 61.00 -> High hop-count boundary check (value: 254.0)',
-          'ct_srv_dst > 1.50 -> Aggregated destination service rate (value: 2.0)',
-          `-> Leaf node assigned ${pred.predicted_class}`,
-        ],
-        decision_path_details: [
-          { node_id: 0, is_leaf: false, feature: 'sttl', operator: '<=', threshold: 61.0, value: 254.0, direction: 'right', samples: 89725, gini: 0.594, predicted_class: 'Normal', next_node_id: 24, condition: 'sttl > 61.00' },
-          { node_id: 24, is_leaf: false, feature: 'ct_srv_dst', operator: '<=', threshold: 1.5, value: 2.0, direction: 'right', samples: 49885, gini: 0.697, predicted_class: 'Exploits', next_node_id: 812, condition: 'ct_srv_dst > 1.50' },
-          { node_id: 812, is_leaf: true, samples: 1420, gini: 0.05, predicted_class: pred.predicted_class },
-        ],
-        random_forest_votes: {
-          [pred.predicted_class]: Math.round(pred.confidence * 100),
-          Normal: pred.predicted_class === 'Normal' ? 100 : Math.max(0, 100 - Math.round(pred.confidence * 100)),
-          total_trees: 100,
-        },
-        random_forest_tree_votes: Array.from({ length: 100 }).map((_, i) =>
-          i < Math.round(pred.confidence * 100) ? pred.predicted_class : 'Normal'
-        ),
-      });
+      setExplanationError(err.message || 'Failed to load the model explanation.');
     } finally {
       setLoadingExplain(false);
     }
@@ -79,7 +55,7 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
             Inference & Triage Table ({filtered.length.toLocaleString()} matching rows)
           </h3>
           <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-            Primary RF model vs Secondary DT model. Click any row for explainability breakdown.
+            Four-class Decision Tree predictions. Click any row to inspect its actual decision path.
           </span>
         </div>
 
@@ -88,8 +64,8 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
           {[
             { id: 'all', label: 'All' },
             { id: 'attacks', label: 'Attacks Only' },
-            { id: 'disagreements', label: 'Disagreements Only' },
             { id: 'low_confidence', label: 'Low Confidence (<60%)' },
+            { id: 'unsupported', label: 'Out-of-scope labels' },
             { id: 'false_positives', label: 'False Positives' },
             { id: 'false_negatives', label: 'False Negatives' },
           ].map((btn) => (
@@ -119,25 +95,21 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
           <thead>
             <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
               <th style={{ padding: '8px 10px', textAlign: 'left' }}>Row #</th>
-              <th style={{ padding: '8px 10px', textAlign: 'left' }}>Primary (RF)</th>
+              <th style={{ padding: '8px 10px', textAlign: 'left' }}>Four-Class Prediction</th>
               <th style={{ padding: '8px 10px', textAlign: 'left' }}>Status</th>
               <th style={{ padding: '8px 10px', textAlign: 'left' }}>Confidence</th>
-              <th style={{ padding: '8px 10px', textAlign: 'left' }}>Secondary (DT)</th>
-              <th style={{ padding: '8px 10px', textAlign: 'center' }}>Agreement</th>
               <th style={{ padding: '8px 10px', textAlign: 'left' }}>Ground Truth</th>
               <th style={{ padding: '8px 10px', textAlign: 'center' }}>Inspect</th>
             </tr>
           </thead>
           <tbody>
             {displayed.map((p) => {
-              const agrees = p.secondary_prediction.agrees_with_primary;
               return (
                 <tr
                   key={p.row_index}
                   onClick={() => handleRowClick(p)}
                   style={{
                     borderBottom: '1px solid #334155',
-                    background: !agrees ? '#261b2b' : 'transparent',
                     cursor: 'pointer',
                   }}
                 >
@@ -168,19 +140,15 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
                       <span style={{ marginLeft: 4, fontSize: '0.65rem', color: '#f59e0b' }}>⚠️ Low</span>
                     )}
                   </td>
-                  <td style={{ padding: '8px 10px', color: '#94a3b8' }}>
-                    {p.secondary_prediction.predicted_class}
-                  </td>
-                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                    <span style={{ color: agrees ? '#10b981' : '#f43f5e', fontWeight: 700 }}>
-                      {agrees ? '✓ Match' : '≠ Split'}
-                    </span>
-                  </td>
                   <td style={{ padding: '8px 10px' }}>
                     {p.ground_truth?.has_ground_truth ? (
-                      <span style={{ color: p.ground_truth.is_correct ? '#10b981' : '#ef4444', fontWeight: 500 }}>
-                        {p.ground_truth.actual_class} {p.ground_truth.is_correct ? '✓' : '✗'}
-                      </span>
+                      p.ground_truth.is_supported ? (
+                        <span style={{ color: p.ground_truth.is_correct ? '#10b981' : '#ef4444', fontWeight: 500 }}>
+                          {p.ground_truth.actual_class} {p.ground_truth.is_correct ? '✓' : '✗'}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#f59e0b' }}>{p.ground_truth.actual_class} (out of scope)</span>
+                      )
                     ) : (
                       <span style={{ color: '#64748b' }}>Unlabeled</span>
                     )}
@@ -266,10 +234,10 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#38bdf8', fontWeight: 800 }}>
-                  Flow #{selectedRow.row_index + 1} — Live Inference & Model Explainability
+                  Flow #{selectedRow.row_index + 1} — Four-Class Model Explanation
                 </h3>
                 <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  Interactive decision path and 100-tree voting breakdown from fitted models
+                  Prediction and decision path from the fitted Decision Tree model
                 </span>
               </div>
               <button
@@ -283,31 +251,17 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
             {/* Prediction Summary Header */}
             <div style={{ background: '#1e293b', padding: 14, borderRadius: 6, marginBottom: 16, border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
               <div>
-                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Primary Ensemble (Random Forest)</span>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>{selectedRow.model_name}</span>
                 <div style={{ fontSize: '1.1rem', fontWeight: 800, color: selectedRow.is_attack ? '#ef4444' : '#10b981', marginTop: 2 }}>
                   {selectedRow.predicted_class} ({((selectedRow.confidence)*100).toFixed(1)}% confidence)
-                </div>
-              </div>
-
-              <div>
-                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Secondary Tree (Decision Tree)</span>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#38bdf8', marginTop: 2 }}>
-                  {selectedRow.secondary_prediction.predicted_class}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Model Consensus</span>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: selectedRow.secondary_prediction.agrees_with_primary ? '#10b981' : '#f43f5e', marginTop: 2 }}>
-                  {selectedRow.secondary_prediction.agrees_with_primary ? '✓ Both Models Agree' : '≠ Models Diverged (Split)'}
                 </div>
               </div>
 
               {selectedRow.ground_truth?.has_ground_truth && (
                 <div>
                   <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Ground Truth Benchmark</span>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: selectedRow.ground_truth.is_correct ? '#10b981' : '#ef4444', marginTop: 2 }}>
-                    {selectedRow.ground_truth.actual_class} ({selectedRow.ground_truth.is_correct ? 'Correct' : 'Misclassified'})
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: selectedRow.ground_truth.is_supported ? (selectedRow.ground_truth.is_correct ? '#10b981' : '#ef4444') : '#f59e0b', marginTop: 2 }}>
+                    {selectedRow.ground_truth.actual_class} ({selectedRow.ground_truth.is_supported ? (selectedRow.ground_truth.is_correct ? 'Correct' : 'Misclassified') : 'Out of scope'})
                   </div>
                 </div>
               )}
@@ -315,17 +269,15 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
 
             {loadingExplain ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#38bdf8', fontSize: '0.9rem' }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🌳 Extracting Decision Tree Path & Forest Votes...</div>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Traversing fitted CART nodes and polling 100 individual estimators...</p>
+                <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🌳 Extracting Decision Tree Path...</div>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Tracing the flow through the fitted CART nodes.</p>
+              </div>
+            ) : explanationError ? (
+              <div style={{ background: '#451a1a', border: '1px solid #ef4444', color: '#fca5a5', padding: 14, borderRadius: 6 }}>
+                {explanationError}
               </div>
             ) : explanation ? (
-              <>
-                {/* 1. Interactive Decision Tree Visualizer */}
-                <DecisionTreeVisualizer explanation={explanation} selectedRow={selectedRow} />
-
-                {/* 2. Interactive Random Forest 100-Tree Voting Simulation */}
-                <RandomForestVotingSim explanation={explanation} />
-              </>
+              <DecisionTreeVisualizer explanation={explanation} selectedRow={selectedRow} />
             ) : null}
           </div>
         </div>

@@ -41,8 +41,9 @@ ml/
 ├── requirements.txt            <-- Pinned dependencies (scikit-learn 1.8.0)
 ├── README.md                   <-- This file
 ├── artifacts/                  <-- Generated deployment artifacts
-│   ├── model.joblib            <-- Serialized RF primary & DT secondary pipelines
-│   └── model_metadata.json     <-- Model schema, classes, versions, metrics
+│   ├── model.joblib            <-- Existing v1/v2 model
+│   ├── model_metadata.json     <-- Existing v1/v2 model metadata
+│   └── v3/                     <-- Separate four-class model and metadata
 ├── src/
 │   ├── config.py               <-- Global constants, paths, seed=42, class list
 │   ├── preprocess.py           <-- Preprocessing & deduplication engine
@@ -51,22 +52,25 @@ ml/
 │   ├── evaluate.py             <-- Official test set evaluation & artifact export
 │   └── predict.py              <-- Inference & explainability engine for API
 ├── notebooks/
-│   ├── README.md               <-- Detailed v1 vs v2 architecture guide
-│   ├── 01_dataset_analysis.ipynb
-│   ├── 02_exploratory_data_analysis.ipynb
-│   ├── 03_feature_engineering.ipynb
-│   ├── 04_model_training.ipynb
-│   └── v2_clean/               <-- Leak-free clean pipeline notebooks
-│       ├── 01_data_quality_and_shift.ipynb
-│       ├── 02_experiments.ipynb
-│       └── 03_final_evaluation.ipynb
+│   ├── v1/                     <-- Original project notebooks
+│   ├── v2/                     <-- Leak-free clean pipeline notebooks
+│   └── v3/                     <-- Consolidated Aftab experiments
+│       ├── four_class/
+│       │   └── improvement/
+│       └── 01_preprocessing.ipynb
+├── docs/
+│   └── v3/                     <-- V3 reports, integration docs, and audits
+│       ├── audit/
+│       └── six_class_experiments/
 └── results/
     ├── metrics/
-    │   ├── experiments_log.csv <-- Tracked cross-validation runs
-    │   └── final_metrics.json  <-- Official test set performance JSON
+    │   ├── experiments_log.csv <-- Existing cross-validation runs
+    │   ├── final_metrics.json  <-- Existing test set performance JSON
+    │   └── v3/                 <-- Four-class metrics and six-class history
     ├── plots/
     │   ├── confusion_matrix.png
-    │   └── feature_importance.png
+    │   ├── feature_importance.png
+    │   └── v3/                 <-- V3 and historical experiment plots
     └── reports/
         ├── data_quality_report.md
         ├── v1_failure_analysis.md

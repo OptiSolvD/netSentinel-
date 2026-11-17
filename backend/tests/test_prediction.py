@@ -98,7 +98,7 @@ def test_explain_endpoint():
 
 
 def test_predict_single_endpoint():
-    """Tests predict_single endpoint function directly."""
+    """Tests the v3 single-model inference endpoint."""
     from backend.app.main import predict_single, PredictSingleRequest
 
     sample_df = pd.read_csv("data/samples/sample_traffic.csv", nrows=1)
@@ -107,10 +107,8 @@ def test_predict_single_endpoint():
     data = predict_single(PredictSingleRequest(features=row_dict))
     assert "prediction" in data
     assert "confidence" in data
-    assert "secondaryPrediction" in data
-    assert "agreement" in data
-    assert "treeVotes" in data
-    assert data["treeVotes"]["total_trees"] == 100
+    assert data["modelName"] == "DecisionTreeClassifier"
+    assert set(data["probabilities"]) == {"Normal", "Exploits", "Fuzzers", "DoS"}
     assert "decisionPath" in data
     assert len(data["decisionPath"]) > 0
 
@@ -122,5 +120,5 @@ def test_tree_structure_endpoint():
     data = tree_structure(depth=3)
     assert "nodes" in data
     assert "0" in data["nodes"]
-    assert data["nodes"]["0"]["feature"] == "sttl"
+    assert data["nodes"]["0"]["feature"] == "num__sttl"
     assert "gini" in data["nodes"]["0"]

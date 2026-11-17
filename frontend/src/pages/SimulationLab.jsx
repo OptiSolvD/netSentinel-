@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import DecisionTreeVisualizer from '../components/DecisionTreeVisualizer';
-import RandomForestVotingSim from '../components/RandomForestVotingSim';
 import { explainRow, predictTraffic } from '../services/api';
 
 export default function SimulationLab() {
@@ -13,6 +12,7 @@ export default function SimulationLab() {
   const [activeStageStep, setActiveStageStep] = useState('idle'); // idle, validate, prep, rf, dt, done
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [flowExplanation, setFlowExplanation] = useState(null);
+  const [flowExplanationError, setFlowExplanationError] = useState(null);
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [loadingInit, setLoadingInit] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -27,6 +27,7 @@ export default function SimulationLab() {
     setActiveStageStep('idle');
     setSelectedFlow(null);
     setFlowExplanation(null);
+    setFlowExplanationError(null);
     setLoadingInit(true);
     setErrorMessage(null);
 
@@ -116,37 +117,14 @@ export default function SimulationLab() {
   const handleInspectFlow = async (flow) => {
     setSelectedFlow(flow);
     setFlowExplanation(null);
+    setFlowExplanationError(null);
     setLoadingExplain(true);
     try {
       const rowFeatures = flow.features || {};
       const exp = await explainRow(rowFeatures);
       setFlowExplanation(exp);
     } catch (err) {
-      console.warn('Explain failed, using model prediction overlay', err);
-      setFlowExplanation({
-        predicted_class: flow.predicted_class,
-        secondary_prediction: flow.secondary_prediction.predicted_class,
-        confidence: flow.confidence,
-        probabilities: flow.probabilities,
-        decision_tree_path: [
-          'sttl > 61.00 -> High hop-count boundary check (value: 254.0)',
-          'ct_srv_dst > 1.50 -> Aggregated destination rate test (value: 2.0)',
-          `-> Terminal Leaf assigned ${flow.secondary_prediction.predicted_class}`,
-        ],
-        decision_path_details: [
-          { node_id: 0, is_leaf: false, feature: 'sttl', operator: '<=', threshold: 61.0, value: 254.0, direction: 'right', samples: 89725, gini: 0.594, predicted_class: 'Normal', next_node_id: 24, condition: 'sttl > 61.00' },
-          { node_id: 24, is_leaf: false, feature: 'ct_srv_dst', operator: '<=', threshold: 1.5, value: 2.0, direction: 'right', samples: 49885, gini: 0.697, predicted_class: 'Exploits', next_node_id: 812, condition: 'ct_srv_dst > 1.50' },
-          { node_id: 812, is_leaf: true, samples: 1420, gini: 0.05, predicted_class: flow.secondary_prediction.predicted_class },
-        ],
-        random_forest_votes: {
-          [flow.predicted_class]: Math.round(flow.confidence * 100),
-          Normal: flow.predicted_class === 'Normal' ? 100 : Math.max(0, 100 - Math.round(flow.confidence * 100)),
-          total_trees: 100,
-        },
-        random_forest_tree_votes: Array.from({ length: 100 }).map((_, i) =>
-          i < Math.round(flow.confidence * 100) ? flow.predicted_class : 'Normal'
-        ),
-      });
+      setFlowExplanationError(err.message || 'Failed to load the model explanation.');
     } finally {
       setLoadingExplain(false);
     }
@@ -156,9 +134,7 @@ export default function SimulationLab() {
   const attackCount = processedFlows.filter((f) => f.is_attack).length;
   const normalCount = processedFlows.length - attackCount;
   const attackPct = processedFlows.length > 0 ? ((attackCount / processedFlows.length) * 100).toFixed(1) : '0.0';
-  const agreementCount = processedFlows.filter((f) => f.secondary_prediction.agrees_with_primary).length;
-  const agreementRate = processedFlows.length > 0 ? ((agreementCount / processedFlows.length) * 100).toFixed(1) : '100.0';
-  const disagreementCount = processedFlows.length - agreementCount;
+  const lowConfidenceCount = processedFlows.filter((flow) => flow.is_low_confidence).length;
 
   const currentFlow = predictions[currentIndex] || null;
 
@@ -167,8 +143,6 @@ export default function SimulationLab() {
     Exploits: '#ef4444',
     Fuzzers: '#f97316',
     DoS: '#eab308',
-    Analysis: '#8b5cf6',
-    Backdoor: '#ec4899',
   };
 
   return (
@@ -180,7 +154,7 @@ export default function SimulationLab() {
             <span>📡</span> NetSentinel Network-Flow Simulation Lab
           </h2>
           <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-            Simulate live ingress network flows one-by-one. Watch packets travel through validation, preprocessing, Random Forest & Decision Tree.
+            Simulate live ingress network flows one-by-one through validation, preprocessing, and the four-class Decision Tree.
           </span>
         </div>
 
@@ -363,13 +337,11 @@ export default function SimulationLab() {
         </div>
 
         <div style={{ background: '#1e293b', padding: 14, borderRadius: 8, border: '1px solid #334155' }}>
-          <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>RF vs DT Agreement</span>
+          <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Low-Confidence Flows</span>
           <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#a855f7', marginTop: 4 }}>
-            {agreementRate}%
+            {lowConfidenceCount}
           </div>
-          <span style={{ fontSize: '0.7rem', color: disagreementCount > 0 ? '#f43f5e' : '#64748b' }}>
-            {disagreementCount} model split{disagreementCount === 1 ? '' : 's'}
-          </span>
+          <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Review threshold: confidence below 60%</span>
         </div>
 
         <div style={{ background: '#1e293b', padding: 14, borderRadius: 8, border: '1px solid #334155' }}>
@@ -387,15 +359,15 @@ export default function SimulationLab() {
             Live Flow Progression: {currentFlow ? `Flow #${currentFlow.row_index + 1}` : 'Stream Idle / Completed'}
           </span>
           <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-            Watch how each network flow travels through validation, preprocessing, and the models
+            Watch each flow pass through the v3 validation, preprocessing, and classification steps
           </span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           {[
             { id: 'validate', label: '1. Feature Validation', desc: '42 cols verified · id dropped', color: '#10b981' },
-            { id: 'prep', label: '2. Preprocessing', desc: '+12 ratios & log1p transforms', color: '#a855f7' },
-            { id: 'models', label: '3. Dual Models (RF & DT)', desc: '100-tree RF vs single CART DT', color: '#f59e0b' },
+            { id: 'prep', label: '2. Preprocessing', desc: 'Imputation & categorical encoding', color: '#a855f7' },
+            { id: 'models', label: '3. Four-Class Model', desc: 'Decision Tree prediction', color: '#f59e0b' },
             { id: 'done', label: '4. Prediction & Triage', desc: currentFlow ? `${currentFlow.predicted_class} (${(currentFlow.confidence * 100).toFixed(0)}%)` : 'Ready', color: '#ef4444' },
           ].map((stg) => {
             const isStageActive = isPlaying && (activeStageStep === stg.id || activeStageStep === 'done');
@@ -436,7 +408,6 @@ export default function SimulationLab() {
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }}>
           {processedFlows.slice(0, 8).map((f) => {
             const color = classColors[f.predicted_class] || '#38bdf8';
-            const agrees = f.secondary_prediction.agrees_with_primary;
             return (
               <div
                 key={f.row_index}
@@ -444,7 +415,7 @@ export default function SimulationLab() {
                 style={{
                   minWidth: 150,
                   background: '#0f172a',
-                  border: `1px solid ${!agrees ? '#f43f5e' : color}`,
+                  border: `1px solid ${color}`,
                   borderRadius: 6,
                   padding: '8px 10px',
                   cursor: 'pointer',
@@ -454,7 +425,7 @@ export default function SimulationLab() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94a3b8', marginBottom: 4 }}>
                   <span>Flow #{String(f.row_index + 1).padStart(3, '0')}</span>
-                  {!agrees && <span style={{ color: '#f43f5e', fontWeight: 800 }}>SPLIT</span>}
+                  {f.is_low_confidence && <span style={{ color: '#f59e0b', fontWeight: 800 }}>REVIEW</span>}
                 </div>
                 <div style={{ fontSize: '0.85rem', fontWeight: 800, color }}>
                   {f.predicted_class}
@@ -482,7 +453,7 @@ export default function SimulationLab() {
               Streaming Triage Queue ({processedFlows.length} Evaluated)
             </span>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              Click any flow to inspect real Decision Tree path & RF votes
+              Click any flow to inspect its real Decision Tree path
             </span>
           </div>
 
@@ -491,16 +462,13 @@ export default function SimulationLab() {
               <thead>
                 <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
                   <th style={{ padding: '8px 10px', textAlign: 'left' }}>Flow #</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'left' }}>Primary (RF)</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'left' }}>Four-Class Prediction</th>
                   <th style={{ padding: '8px 10px', textAlign: 'left' }}>Confidence</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'left' }}>Secondary (DT)</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>Agreement</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {processedFlows.map((f) => {
-                  const agrees = f.secondary_prediction.agrees_with_primary;
                   const isSelected = selectedFlow && selectedFlow.row_index === f.row_index;
 
                   return (
@@ -509,7 +477,7 @@ export default function SimulationLab() {
                       onClick={() => handleInspectFlow(f)}
                       style={{
                         borderBottom: '1px solid #334155',
-                        background: isSelected ? '#1e3a5f' : (!agrees ? '#261b2b' : 'transparent'),
+                        background: isSelected ? '#1e3a5f' : 'transparent',
                         cursor: 'pointer',
                       }}
                     >
@@ -521,14 +489,6 @@ export default function SimulationLab() {
                       </td>
                       <td style={{ padding: '8px 10px', color: '#38bdf8' }}>
                         {(f.confidence * 100).toFixed(1)}%
-                      </td>
-                      <td style={{ padding: '8px 10px', color: '#cbd5e1' }}>
-                        {f.secondary_prediction.predicted_class}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                        <span style={{ color: agrees ? '#10b981' : '#f43f5e', fontWeight: 700 }}>
-                          {agrees ? '✓ Agree' : '≠ Split'}
-                        </span>
                       </td>
                       <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                         <button
@@ -563,7 +523,7 @@ export default function SimulationLab() {
                   Explainability: Flow #{String(selectedFlow.row_index + 1).padStart(3, '0')}
                 </span>
                 <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8' }}>
-                  RF: <strong style={{ color: selectedFlow.is_attack ? '#ef4444' : '#10b981' }}>{selectedFlow.predicted_class}</strong> | DT: <strong>{selectedFlow.secondary_prediction.predicted_class}</strong>
+                  {selectedFlow.model_name || 'DecisionTreeClassifier'}: <strong style={{ color: selectedFlow.is_attack ? '#ef4444' : '#10b981' }}>{selectedFlow.predicted_class}</strong>
                 </span>
               </div>
               <button
@@ -576,14 +536,15 @@ export default function SimulationLab() {
 
             {loadingExplain ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#38bdf8' }}>
-                <div style={{ fontSize: '1.2rem', marginBottom: 8 }}>🌳 Extracting Decision Tree Path & RF Votes...</div>
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Evaluating actual flow values against trained estimators...</p>
+                <div style={{ fontSize: '1.2rem', marginBottom: 8 }}>🌳 Extracting Decision Tree Path...</div>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Tracing actual flow values through the fitted model.</p>
+              </div>
+            ) : flowExplanationError ? (
+              <div style={{ background: '#451a1a', border: '1px solid #ef4444', color: '#fca5a5', padding: 12, borderRadius: 6 }}>
+                {flowExplanationError}
               </div>
             ) : flowExplanation ? (
-              <>
-                <DecisionTreeVisualizer explanation={flowExplanation} selectedRow={selectedFlow} />
-                <RandomForestVotingSim explanation={flowExplanation} />
-              </>
+              <DecisionTreeVisualizer explanation={flowExplanation} selectedRow={selectedFlow} />
             ) : null}
           </div>
         )}

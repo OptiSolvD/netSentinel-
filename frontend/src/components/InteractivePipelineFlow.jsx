@@ -8,15 +8,9 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
   const valStage = stages?.find((s) => s.stage === 'validation')?.data || {};
   const prepStage = stages?.find((s) => s.stage === 'preprocessing')?.data || {};
   const predStage = stages?.find((s) => s.stage === 'prediction')?.data || {};
-  const resultsStage = stages?.find((s) => s.stage === 'results')?.data || {};
 
   const totalRows = fileStage.rows || summary?.total_rows || 500;
   const missingCount = prepStage.filled_missing !== undefined ? prepStage.filled_missing : 0;
-  const agreementPct = summary?.model_agreement_rate
-    ? (summary.model_agreement_rate * 100).toFixed(1)
-    : resultsStage.model_agreement_rate
-    ? (resultsStage.model_agreement_rate * 100).toFixed(1)
-    : '85.4';
 
   const stageMeta = [
     {
@@ -92,72 +86,49 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
     {
       id: 'preprocessing',
       title: 'Preprocessing',
-      subtitle: 'Imputation · Encoding · Ratios',
-      badge: '+12 Ratios',
+      subtitle: 'Imputation · One-Hot Encoding',
+      badge: '42 Inputs',
       icon: '⚡',
       color: '#a855f7',
-      summary: 'Handles missing values, encodes categoricals, and engineers 12 domain ratio and log features.',
+      summary: 'Imputes missing values and one-hot encodes categorical features.',
       details: {
         headline: 'Stage 3: Preprocessing & Feature Transformation',
         description:
-          'Prepares the raw feature vector for machine learning models: transforms skewed traffic counters via log1p, computes byte and packet transfer balance ratios, and one-hot encodes categorical fields.',
+          'Applies the v3 model’s fitted preprocessing pipeline: median imputation for numeric fields, most-frequent imputation for categorical fields, and one-hot encoding.',
         stats: [
           { label: 'Original Input Columns', value: '42 raw features' },
           { label: 'Metadata Columns Ignored', value: '3 (id, label, attack_cat)' },
           { label: 'Categorical Columns Encoded', value: '3 (proto, service, state)' },
-          { label: 'Missing Values Found', value: `${missingCount} nulls (Median imputed)` },
-          { label: 'Engineered Features Added', value: '+12 domain ratios & logs' },
-          { label: 'Final Model Features', value: '54 dimensions' },
-        ],
-        categoricalEncoders: [
-          { col: 'proto', type: 'One-Hot Encoding', note: 'Maps network protocols (tcp, udp, arp, ospf, etc.) with handle_unknown="ignore"' },
-          { col: 'service', type: 'One-Hot Encoding', note: 'Maps application services (http, ftp, dns, smtp, ssh, etc.)' },
-          { col: 'state', type: 'One-Hot Encoding', note: 'Maps connection states (CON, FIN, INT, REQ, RST, etc.)' },
-        ],
-        engineeredRatios: [
-          { name: 'sbytes_per_spkt', formula: 'sbytes / (spkts + 1e-5)', desc: 'Source payload density (bytes per packet)' },
-          { name: 'dbytes_per_dpkt', formula: 'dbytes / (dpkts + 1e-5)', desc: 'Destination payload density (bytes per packet)' },
-          { name: 'byte_ratio', formula: 'sbytes / (dbytes + 1.0)', desc: 'Transfer balance (asymmetric volume marker)' },
-          { name: 'pkt_ratio', formula: 'spkts / (dpkts + 1.0)', desc: 'Packet flow balance' },
-          { name: 'ttl_ratio', formula: 'sttl / (dttl + 1.0)', desc: 'Hop distance and network path balance' },
-          { name: 'load_ratio', formula: 'sload / (dload + 1.0)', desc: 'Throughput transfer ratio' },
-          { name: 'log_dur, log_sbytes, log_dbytes, log_rate, log_sload, log_dload', formula: 'log1p(x)', desc: 'Heavy-tailed distributions stabilized with natural log' },
+          { label: 'Missing Values Found', value: `${missingCount} (pipeline imputation)` },
+          { label: 'Transformed Model Features', value: prepStage.n_features_out || 'Encoded by fitted pipeline' },
         ],
       },
     },
     {
       id: 'models',
-      title: 'Dual ML Models',
-      subtitle: 'Random Forest & Decision Tree',
-      badge: 'Dual Eval',
+      title: 'Four-Class Model',
+      subtitle: 'Decision Tree Classifier',
+      badge: 'v3 Model',
       icon: '🧠',
       color: '#f59e0b',
-      summary: 'Parallel execution of primary 100-tree Random Forest and secondary CART Decision Tree.',
+      summary: 'Runs the selected four-class Decision Tree model.',
       details: {
-        headline: 'Stage 4: Dual-Algorithm Inference Engine',
+        headline: 'Stage 4: Four-Class Decision Tree Inference',
         description:
-          'Evaluates each network flow simultaneously through two distinct model architectures: an ensemble Random Forest (primary) for maximum generalization, and a single Decision Tree (secondary) for instant rule explainability.',
+          'The v3 fitted DecisionTreeClassifier predicts Normal, Exploits, Fuzzers, or DoS and exposes its actual decision path for each flow.',
         stats: [
-          { label: 'Primary Model', value: 'RandomForest (100 Trees, Depth 16)' },
-          { label: 'Secondary Model', value: 'DecisionTree (Single CART, Depth 12)' },
-          { label: 'Model Agreement Rate', value: `${agreementPct}%` },
-          { label: 'Inference Throughput', value: predStage.rows_per_second ? `${predStage.rows_per_second.toLocaleString()} rows/s` : '~69,290 rows/s' },
-          { label: 'Latency (Batch)', value: predStage.inference_ms ? `${predStage.inference_ms} ms` : '14.2 ms' },
+          { label: 'Active Model', value: predStage.model_name || 'DecisionTreeClassifier' },
+          { label: 'Model Version', value: predStage.model_version || 'v3-four-class' },
+          { label: 'Inference Throughput', value: predStage.rows_per_second ? `${predStage.rows_per_second.toLocaleString()} rows/s` : 'Waiting for inference' },
+          { label: 'Latency (Batch)', value: predStage.inference_ms ? `${predStage.inference_ms} ms` : 'Waiting for inference' },
         ],
         models: [
           {
-            name: 'Random Forest Classifier (Primary)',
-            type: 'Bagging Ensemble',
-            mechanism: 'Plurality voting across 100 de-correlated randomized trees',
-            explainability: 'Per-tree vote distribution & Gini feature importances',
-            benefit: 'Minimizes variance and reduces false alarm rate to 17.77%',
-          },
-          {
-            name: 'Decision Tree Classifier (Secondary)',
-            type: 'Single Binary CART',
-            mechanism: 'Greedy top-down recursive feature partitioning using Gini impurity',
-            explainability: 'Exact deterministic Boolean decision path from root to leaf',
-            benefit: 'Instant transparency for security analysts to inspect rule thresholds',
+            name: 'Decision Tree Classifier',
+            type: 'Four-class CART',
+            mechanism: 'Traverses learned feature thresholds from root to leaf',
+            explainability: 'Returns the exact decision path and class probabilities',
+            benefit: 'Every prediction can be inspected as a concrete rule path',
           },
         ],
       },
@@ -169,13 +140,13 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
       badge: 'Triage Ready',
       icon: '🚨',
       color: '#ef4444',
-      summary: 'Assigns attack category, calculates confidence, highlights split votes, and updates triage queues.',
+      summary: 'Assigns one of four categories, reports confidence, and flags low-confidence predictions.',
       details: {
         headline: 'Stage 5: SOC Triage & Alert Classification',
         description:
-          'Synthesizes model outputs into operational security alerts with class probabilities, flagging low-confidence predictions (<60%) and model disagreements for analyst review.',
+          'Reports the four-class model prediction and class probabilities, flagging low-confidence predictions (<60%) for analyst review.',
         stats: [
-          { label: 'Taxonomy', value: '6 Classes (Normal + 5 Attack Categories)' },
+          { label: 'Taxonomy', value: '4 Classes (Normal, Exploits, Fuzzers, DoS)' },
           { label: 'Low Confidence Gate', value: '< 60% probability threshold' },
           { label: 'Attacks Flagged', value: summary ? `${summary.attack_count.toLocaleString()} (${((summary.attack_count / totalRows) * 100).toFixed(1)}%)` : 'Elevated' },
           { label: 'Benign Flows Passed', value: summary ? `${summary.normal_count.toLocaleString()}` : 'Monitored' },
@@ -185,8 +156,6 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
           { name: 'Exploits', color: '#ef4444', desc: 'Known vulnerabilities and shellcode injection' },
           { name: 'Fuzzers', color: '#f97316', desc: 'Automated high-rate randomized protocol probing' },
           { name: 'DoS', color: '#eab308', desc: 'Denial of Service bandwidth and resource exhaustion' },
-          { name: 'Analysis', color: '#8b5cf6', desc: 'Port scans, web crawlers, and HTML/packet sniffers' },
-          { name: 'Backdoor', color: '#ec4899', desc: 'Persistent stealth C2 channels and reverse shells' },
         ],
       },
     },
@@ -208,7 +177,7 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
             </span>
           </div>
           <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
-            Interactive flow from raw CSV capture to dual-model triage. Click any stage below to inspect technical execution.
+            Interactive flow from raw CSV capture to the v3 four-class model. Click any stage below to inspect technical execution.
           </p>
         </div>
 
@@ -323,10 +292,9 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
           ))}
         </div>
 
-        {/* Stage-Specific Content: Preprocessing (Directly answers User Prompt requirement #1) */}
+        {/* Stage-Specific Content: Preprocessing */}
         {activeStage.id === 'preprocessing' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Quick Answer Matrix */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
               <div style={{ background: '#090d16', padding: 12, borderRadius: 6, border: '1px solid #334155' }}>
                 <span style={{ fontSize: '0.7rem', color: '#a855f7', fontWeight: 700, display: 'block', marginBottom: 4 }}>
@@ -360,35 +328,8 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
                   4. MISSING VALUES & FINAL FEATURES
                 </span>
                 <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-                  <strong>{missingCount} missing values found</strong> (Median imputed). Final: <strong>54 transformed model dimensions</strong>.
+                  <strong>{missingCount} missing values found</strong>. The fitted model pipeline imputes missing values before prediction.
                 </span>
-              </div>
-            </div>
-
-            {/* Engineered Domain Ratios Table */}
-            <div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a855f7', display: 'block', marginBottom: 6 }}>
-                +12 Engineered Domain Ratios & Log Normalizations:
-              </span>
-              <div style={{ background: '#090d16', borderRadius: 6, border: '1px solid #334155', overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                  <thead>
-                    <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
-                      <th style={{ padding: '6px 10px', textAlign: 'left' }}>Engineered Feature</th>
-                      <th style={{ padding: '6px 10px', textAlign: 'left' }}>Formula / Definition</th>
-                      <th style={{ padding: '6px 10px', textAlign: 'left' }}>Cybersecurity Rationale</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeStage.details.engineeredRatios.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #1e293b' }}>
-                        <td style={{ padding: '6px 10px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{r.name}</td>
-                        <td style={{ padding: '6px 10px', color: '#cbd5e1', fontFamily: 'monospace' }}>{r.formula}</td>
-                        <td style={{ padding: '6px 10px', color: '#94a3b8' }}>{r.desc}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
@@ -428,12 +369,12 @@ export default function InteractivePipelineFlow({ stages, summary, selectedRow }
           </div>
         )}
 
-        {/* Stage-Specific Content: Dual Models */}
+        {/* Stage-Specific Content: Active Model */}
         {activeStage.id === 'models' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
             {activeStage.details.models.map((m, i) => (
-              <div key={i} style={{ background: '#090d16', padding: 14, borderRadius: 6, border: `1px solid ${i === 0 ? '#f59e0b' : '#38bdf8'}` }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: i === 0 ? '#f59e0b' : '#38bdf8', marginBottom: 4 }}>
+              <div key={i} style={{ background: '#090d16', padding: 14, borderRadius: 6, border: '1px solid #f59e0b' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f59e0b', marginBottom: 4 }}>
                   {m.name}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: 8 }}>Type: {m.type}</div>

@@ -12,8 +12,14 @@ data/processed/*
 !data/processed/.gitkeep
 ml/artifacts/*
 !ml/artifacts/.gitkeep
+!ml/artifacts/v3/
+!ml/artifacts/v3/**
 
 # Generated evaluation output
 ml/results/metrics/*
+!ml/results/metrics/v3/
+!ml/results/metrics/v3/**
 ml/results/plots/*
+!ml/results/plots/v3/
+!ml/results/plots/v3/**
 ml/results/reports/*

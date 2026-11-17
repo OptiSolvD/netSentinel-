@@ -3,7 +3,7 @@
 > **Version**: 2.0.0  
 > **Status**: Approved  
 > **Primary Audience**: Backend Engineers, Frontend Engineers, ML Engineers  
-> **Context**: UNSW-NB15 Intrusion Detection System (6-class taxonomy: `Normal`, `Exploits`, `Fuzzers`, `DoS`, `Analysis`, `Backdoor`)
+> **Active serving model**: v3 four-class Decision Tree (`Normal`, `Exploits`, `Fuzzers`, `DoS`). The six-class and Random Forest request/response examples below are historical v2 examples, not the current v3 payload contract.
 
 ---
 
@@ -298,6 +298,16 @@ Static metadata describing offline training split, models evaluated, offline met
   "banner_text": "Trained offline on UNSW-NB15 (2015 testbed); this page runs predictions only."
 }
 ```
+
+### 2.6. `GET /api/v1/model/evaluation`
+Returns the stored official held-out v3 test report: four-class confusion matrix and per-class precision, recall, F1, and support. Metric definitions are corrected from the stored confusion matrix: `normal_false_alarm_rate` is Normal rows predicted as an attack divided by all actual Normal rows, and `pooled_attack_recall` counts any attack class predicted as an attack divided by all actual attack rows. `mean_attack_class_recall` is reported separately.
+
+The legacy `final_test_metrics.json` contains mislabeled values for normal false-positive rate and attack recall. The endpoint does not expose those values under their legacy names; it includes a note describing the correction. Historical files remain unchanged.
+
+### 2.7. `GET /api/v1/model-evolution/comparison`
+Returns the four-class baseline, final model metadata, validation-only candidate comparisons, corrected metrics derived from saved confusion matrices, grouped cross-validation records, and experiment history. Validation comparisons are only made between candidates evaluated on the same validation split.
+
+The official-test baseline comparison remains `pending_baseline_artifact` when no separate four-class baseline artifact and test predictions are available. The v2 six-class artifact is not used as a substitute. Cross-validation FAR and attack-recall fields are omitted because the saved fold confusion matrices are unavailable and the historical formulas are incorrect.
 
 ---
 

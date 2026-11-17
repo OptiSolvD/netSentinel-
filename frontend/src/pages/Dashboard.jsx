@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import InteractivePipelineFlow from '../components/InteractivePipelineFlow';
-import AlgorithmComparisonPanel from '../components/AlgorithmComparisonPanel';
 import MetricCard from '../components/MetricCard';
 import AttackDistribution from '../components/Charts/AttackDistribution';
 import ConfusionMatrix from '../components/Charts/ConfusionMatrix';
@@ -13,7 +12,6 @@ export default function Dashboard({ onNavigateTab }) {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.60);
-  const [showComparison, setShowComparison] = useState(true);
 
   const handleFileUpload = async (uploadedFile) => {
     if (!uploadedFile) return;
@@ -74,9 +72,11 @@ export default function Dashboard({ onNavigateTab }) {
         }}
       >
         <span>
-          ℹ️ <strong>Offline Training Policy</strong>: Models trained offline on UNSW-NB15 benchmark. This console runs live validation, feature engineering, and inference telemetry.
+          ℹ️ <strong>Offline Training Policy</strong>: The v3 model is trained offline on UNSW-NB15; this console runs validation, fitted preprocessing, and live inference.
         </span>
-        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Taxonomy: 6 Classes</span>
+        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+          {result?.classes?.length || 4}-Class Taxonomy
+        </span>
       </div>
 
       {/* Upload Zone & Sample Buttons */}
@@ -166,7 +166,7 @@ export default function Dashboard({ onNavigateTab }) {
         <div style={{ textAlign: 'center', padding: '30px 0', color: '#38bdf8' }}>
           <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>⚙️ Processing Pipeline...</div>
           <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-            Running schema validation, feature engineering, and dual-model inference...
+            Running schema validation, model preprocessing, and four-class Decision Tree inference...
           </p>
         </div>
       )}
@@ -211,11 +211,11 @@ export default function Dashboard({ onNavigateTab }) {
               icon="⚠️"
             />
             <MetricCard
-              title="Model Agreement Rate"
-              value={`${(result.summary.model_agreement_rate * 100).toFixed(1)}%`}
-              subtitle="Random Forest vs Decision Tree"
+              title="Active Model"
+              value="Decision Tree"
+              subtitle={result.model_version || 'v3-four-class'}
               color="#a855f7"
-              icon="🤝"
+              icon="🌳"
             />
           </div>
 
@@ -270,36 +270,6 @@ export default function Dashboard({ onNavigateTab }) {
             confidenceDist={result.summary.confidence_distribution}
           />
 
-          {/* Dual-Algorithm Comparison Panel (Answers requirement #5) */}
-          <div style={{ margin: '20px 0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <button
-                onClick={() => setShowComparison(!showComparison)}
-                style={{
-                  background: '#1e293b',
-                  color: '#38bdf8',
-                  border: '1px solid #334155',
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                {showComparison ? '▼ Hide Algorithm Comparison' : '▶ Show Dual-Algorithm Comparison (RF vs DT)'}
-              </button>
-            </div>
-            {showComparison && (
-              <AlgorithmComparisonPanel
-                summary={result.summary}
-                predictions={result.predictions}
-              />
-            )}
-          </div>
-
           {/* Ground-Truth Confusion Matrix (if ground-truth exists) */}
           {result.evaluation_metrics && (
             <ConfusionMatrix evalMetrics={result.evaluation_metrics} />
@@ -308,7 +278,6 @@ export default function Dashboard({ onNavigateTab }) {
           {/* Detailed Prediction Table with Inspector */}
           <PredictionTable
             predictions={result.predictions}
-            agreementRate={result.summary.model_agreement_rate}
           />
         </>
       )}
