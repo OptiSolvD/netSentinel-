@@ -63,8 +63,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://optisolvD.github.io",
-        "https://netsentinal-page.netlify.app/",
+        "https://optisolvd.github.io",
     ],
     allow_credentials=False,
     allow_methods=["*"],
