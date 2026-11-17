@@ -1,0 +1,5 @@
+model,configuration,cv_macro_f1,cv_std,folds,weighted
+Random Forest,"{""class_weight"": null, ""max_depth"": null, ""min_samples_leaf"": 1, ""n_estimators"": 50}",0.6665225192895644,0.0038344468997175,2,False
+Random Forest,"{""class_weight"": ""balanced_subsample"", ""max_depth"": 22, ""min_samples_leaf"": 2, ""n_estimators"": 50}",0.7214390697450422,0.0004327626486185,2,False
+Decision Tree,"{""class_weight"": null, ""max_depth"": null, ""min_samples_leaf"": 1}",0.681684576065891,0.003647416586764207,2,False
+Decision Tree,"{""class_weight"": ""balanced"", ""max_depth"": 18, ""min_samples_leaf"": 2}",0.7012407538695886,0.0030765524746818596,2,False
