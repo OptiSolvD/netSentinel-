@@ -13,7 +13,18 @@ function Metric({ label, value, note }) {
 
 export default function Reports({ metadata, metadataError, evaluation, evaluationError }) {
   const [selectedCell, setSelectedCell] = useState(null);
+  const [selectedClass, setSelectedClass] = useState('');
   const metrics = evaluation?.metrics || metadata?.test_metrics;
+  const selectedClassMetrics = evaluation?.per_class_metrics?.find(
+    (row) => row.class_name === selectedClass,
+  ) || evaluation?.per_class_metrics?.[0];
+  const largestConfusion = evaluation?.confusion_matrix?.matrix?.reduce((largest, row, rowIndex) => (
+    row.reduce((currentLargest, count, columnIndex) => (
+      rowIndex !== columnIndex && count > currentLargest.count
+        ? { actual: evaluation.confusion_matrix.classes[rowIndex], predicted: evaluation.confusion_matrix.classes[columnIndex], count }
+        : currentLargest
+    ), largest)
+  ), { actual: null, predicted: null, count: 0 });
 
   return (
     <div className="page-shell">
@@ -70,8 +81,45 @@ export default function Reports({ metadata, metadataError, evaluation, evaluatio
       {evaluation?.per_class_metrics && (
         <section className="card">
           <div className="section-heading">
-            <div><h2>Per-class performance</h2><p>Precision, recall, and F1 use the official test-set class support.</p></div>
+            <div><h2>Class-wise performance explorer</h2><p>Select a class to compare precision, recall, and F1 alongside its test-set support.</p></div>
           </div>
+          <div className="class-selector" role="group" aria-label="Select a class to explore">
+            {evaluation.per_class_metrics.map((row) => (
+              <button
+                type="button"
+                key={row.class_name}
+                className={`class-select-button ${selectedClassMetrics?.class_name === row.class_name ? 'is-selected' : ''}`}
+                aria-pressed={selectedClassMetrics?.class_name === row.class_name}
+                onClick={() => setSelectedClass(row.class_name)}
+              >
+                <span className={`class-chip class-${row.class_name}`}><span className={`class-dot class-${row.class_name}`} />{row.class_name}</span>
+              </button>
+            ))}
+          </div>
+          {selectedClassMetrics && (
+            <div className="class-metric-explorer">
+              <div>
+                <h3><span className={`class-chip class-${selectedClassMetrics.class_name}`}>{selectedClassMetrics.class_name}</span></h3>
+                <p className="muted small">{selectedClassMetrics.support.toLocaleString()} actual test examples in this class.</p>
+                <p className="small">Precision: of the flows predicted as {selectedClassMetrics.class_name}, this fraction was correct. Recall: of actual {selectedClassMetrics.class_name} flows, this fraction was found. F1 balances precision and recall.</p>
+              </div>
+              <div className="class-metric-bars">
+                {[
+                  ['Precision', selectedClassMetrics.precision],
+                  ['Recall', selectedClassMetrics.recall],
+                  ['F1-score', selectedClassMetrics.f1],
+                ].map(([label, value]) => (
+                  <div className="class-metric-row" key={label}>
+                    <span>{label}</span>
+                    <div className="bar-track" role="meter" aria-label={`${selectedClassMetrics.class_name} ${label}`} aria-valuenow={Math.round(value * 100)} aria-valuemin="0" aria-valuemax="100">
+                      <div className="bar-fill" style={{ width: `${Math.min(100, Math.max(0, value * 100))}%`, background: 'var(--accent)' }} />
+                    </div>
+                    <strong>{(value * 100).toFixed(2)}%</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="table-wrap">
             <table className="data-table">
               <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
@@ -85,6 +133,26 @@ export default function Reports({ metadata, metadataError, evaluation, evaluatio
                 </tr>
               ))}</tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {metrics && (
+        <section className="card">
+          <div className="section-heading">
+            <div><h2>What the results tell us</h2><p>Interpretation is based on the saved held-out evaluation, not an uploaded sample.</p></div>
+          </div>
+          <div className="grid-2">
+            <div className="notice">
+              <strong>Largest observed confusion</strong>
+              {largestConfusion?.actual && largestConfusion.count > 0
+                ? <p>{largestConfusion.count.toLocaleString()} actual {largestConfusion.actual} rows were predicted as {largestConfusion.predicted}. The confusion matrix shows the complete distribution.</p>
+                : <p>No off-diagonal errors were recorded in the available confusion matrix.</p>}
+            </div>
+            <div className="notice scope-notice">
+              <strong>Scope and next steps</strong>
+              <p>The report covers UNSW-NB15 and excludes unsupported Analysis and Backdoor labels. Evaluate on additional datasets and investigate class balance and threshold behavior before applying results to other environments.</p>
+            </div>
           </div>
         </section>
       )}

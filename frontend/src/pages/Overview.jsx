@@ -16,6 +16,11 @@ function percentage(value, digits = 1) {
   return Number.isFinite(value) ? `${(value * 100).toFixed(digits)}%` : '—';
 }
 
+function classAverage(rows, metric) {
+  if (!rows?.length) return null;
+  return rows.reduce((total, row) => total + row[metric], 0) / rows.length;
+}
+
 function ClassLabel({ name }) {
   return (
     <span className={`class-chip class-${name}`}>
@@ -28,12 +33,15 @@ function ClassLabel({ name }) {
 export default function Overview({
   metadata,
   metadataError,
+  evaluation,
   health,
   healthError,
   lastAnalysis,
   onNavigate,
 }) {
   const metrics = metadata?.test_metrics;
+  const classMetrics = evaluation?.per_class_metrics;
+  const summaryMetrics = evaluation?.metrics || metrics;
   const counts = lastAnalysis?.summary?.category_counts;
   const recent = lastAnalysis?.predictions?.slice(0, 8) || [];
 
@@ -41,9 +49,9 @@ export default function Overview({
     <div className="page-shell">
       <div className="page-heading">
         <div>
-          <div className="eyebrow">Network observability · v3 model</div>
-          <h1>Overview</h1>
-          <p>Inspect four-class network-flow results from the fitted Decision Tree. The console analyzes flow-feature CSV files; it does not capture packets or monitor a live interface.</p>
+          <div className="eyebrow">Network intrusion detection · UNSW-NB15</div>
+          <h1>Understand network traffic, one flow at a time.</h1>
+          <p>NetSentinel demonstrates a four-class machine-learning approach to identifying suspicious network flows. Upload a feature-ready CSV to inspect predictions, test-set evidence, and the Decision Tree’s reasoning.</p>
         </div>
         <button className="button" onClick={() => onNavigate('evaluate')}>Test a CSV dataset <span aria-hidden="true">→</span></button>
       </div>
@@ -56,25 +64,64 @@ export default function Overview({
             : 'Checking the inference API…'}
       </div>
 
-      {metrics && (
+      {summaryMetrics && (
         <>
           <div className="metric-grid">
-            <Metric label="Held-out test accuracy" value={percentage(metrics.accuracy)} note="Official v3 evaluation" />
-            <Metric label="Macro F1" value={percentage(metrics.macro_f1)} note="Unweighted mean across four classes" />
-            <Metric label="Pooled attack recall" value={percentage(metrics.pooled_attack_recall)} note="Actual attacks predicted as any attack class" />
-            <Metric label="Normal false-alarm rate" value={percentage(metrics.normal_false_alarm_rate)} note="Normal rows predicted as an attack" />
+            <Metric label="Held-out accuracy" value={percentage(summaryMetrics.accuracy)} note="Correct predictions across supported test rows" />
+            <Metric label="Macro precision" value={percentage(classAverage(classMetrics, 'precision'))} note="Unweighted mean of four class precisions" />
+            <Metric label="Macro recall" value={percentage(classAverage(classMetrics, 'recall'))} note="Unweighted mean of four class recalls" />
+            <Metric label="Macro F1" value={percentage(summaryMetrics.macro_f1)} note="Unweighted mean across four classes" />
           </div>
           <p className="muted small">
-            Mean recall across the three attack classes: {percentage(metrics.mean_attack_class_recall)}. Baseline: {metrics.test_rows_evaluated.toLocaleString()} supported held-out rows. {metrics.excluded_test_rows.toLocaleString()} rows from excluded labels (Analysis, Backdoor) were not evaluated.
+            {summaryMetrics.test_rows_evaluated.toLocaleString()} supported held-out rows were evaluated.
+            {' '}{summaryMetrics.excluded_test_rows.toLocaleString()} rows labeled Analysis or Backdoor were excluded because they are outside the model’s four-class scope.
+            {Number.isFinite(summaryMetrics.mean_attack_class_recall) && ` Mean recall across the three attack classes: ${percentage(summaryMetrics.mean_attack_class_recall)}.`}
           </p>
           {metadata?.test_metric_note && <p className="muted small">{metadata.test_metric_note}</p>}
         </>
       )}
-      {!metrics && (
+      {!summaryMetrics && (
         <div className={metadataError ? 'error-notice' : 'empty-state'}>
-          {metadataError ? `Could not load stored model metrics: ${metadataError}` : 'Loading the active model metadata…'}
+          {metadataError ? `Could not load stored model metrics: ${metadataError}` : 'Loading the active model results…'}
         </div>
       )}
+
+      <section className="card">
+        <div className="section-heading">
+          <div>
+            <h2>From the detection problem to an evaluated model</h2>
+            <p>A concise project map, with the current model’s actual training and evaluation scope.</p>
+          </div>
+          <span className="pill">Decision Tree · v3</span>
+        </div>
+        <div className="overview-story-grid">
+          <article>
+            <span className="step-number">THE PROBLEM</span>
+            <h3>Network traffic needs inspection</h3>
+            <p>Intrusion detection separates legitimate flows from attack traffic. NetSentinel classifies prepared flow records; it is not a packet capture or live network monitor.</p>
+          </article>
+          <article>
+            <span className="step-number">THE DATA</span>
+            <h3>UNSW-NB15 · 42 input features</h3>
+            <p>{metadata ? `${metadata.stored_metrics.training_rows.toLocaleString()} training rows and ${summaryMetrics?.test_rows_evaluated?.toLocaleString() || '—'} supported held-out test rows.` : 'A labeled network-flow dataset with numeric and categorical input features.'} The active taxonomy is Normal, Exploits, Fuzzers, and DoS.</p>
+          </article>
+          <article>
+            <span className="step-number">THE METHOD</span>
+            <h3>Preprocess, then classify</h3>
+            <p>The fitted preprocessing pipeline handles missing values and categorical fields before a single CART Decision Tree predicts a class with a traceable threshold path.</p>
+          </article>
+          <article>
+            <span className="step-number">THE EVIDENCE</span>
+            <h3>Check more than accuracy</h3>
+            <p>Held-out metrics, per-class results, and a confusion matrix reveal where the model succeeds and which errors remain. Explore them in Reports.</p>
+          </article>
+        </div>
+        <div className="overview-conclusion">
+          <strong>Conclusion and limitation</strong>
+          <p>{summaryMetrics ? `On its supported held-out set, the model reached ${percentage(summaryMetrics.accuracy)} accuracy and ${percentage(summaryMetrics.macro_f1)} macro F1.` : 'The model is evaluated against supported held-out labels; evaluation results are currently loading.'} Results are specific to UNSW-NB15 and the four supported classes, so they do not establish performance on other networks or excluded labels.</p>
+          <button className="button-secondary button-small" onClick={() => onNavigate('reports')}>Explore the evaluation <span aria-hidden="true">→</span></button>
+        </div>
+      </section>
 
       <div className="grid-2">
         <section className="card">

@@ -249,6 +249,31 @@ export default function HowItWorks({ lastAnalysis, metadata, metadataError }) {
       </div>
 
       <section className="card">
+        <div className="section-heading">
+          <div><h2>Dataset and classification scope</h2><p>The model’s claims are limited to the data and labels it was trained and evaluated to recognize.</p></div>
+          <span className="pill">UNSW-NB15</span>
+        </div>
+        <div className="class-explainer-grid">
+          {[
+            ['Normal', 'Legitimate network traffic'],
+            ['Exploits', 'Exploit-related attack traffic'],
+            ['Fuzzers', 'Fuzzing-related attack traffic'],
+            ['DoS', 'Denial-of-Service traffic'],
+          ].map(([name, description]) => (
+            <article className={`class-explainer class-${name}`} key={name}>
+              <span className={`class-chip class-${name}`}><span className={`class-dot class-${name}`} />{name}</span>
+              <p>{description}</p>
+            </article>
+          ))}
+        </div>
+        {metadata && (
+          <p className="muted small">
+            The active model was fitted on {metadata.stored_metrics.training_rows.toLocaleString()} rows with {metadata.input_features.length} raw predictors. Its official held-out report covers {metadata.test_metrics.test_rows_evaluated.toLocaleString()} supported rows; {metadata.test_metrics.excluded_test_rows.toLocaleString()} Analysis and Backdoor rows were excluded.
+          </p>
+        )}
+      </section>
+
+      <section className="card">
         <div className="section-heading"><div><h2>Flow analysis pipeline</h2><p>Current serving path for a feature-ready CSV flow record.</p></div></div>
         <div className="flow-grid">
           {[

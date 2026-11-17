@@ -162,6 +162,9 @@ Create `frontend/.env` and configure the backend URL:
 VITE_API_BASE_URL=http://localhost:8000/api/v1
 ```
 
+The GitHub Pages production build defaults to the deployed Render API URL. Set
+`VITE_API_BASE_URL` in the build environment to override it when deploying elsewhere.
+
 ### 5.4 Start the Backend
 
 From the repository root:

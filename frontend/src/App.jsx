@@ -96,6 +96,7 @@ export default function App() {
           <Overview
             metadata={metadata}
             metadataError={metadataError}
+            evaluation={officialEvaluation}
             health={health}
             healthError={healthError}
             lastAnalysis={lastAnalysis}
