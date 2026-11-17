@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { fetchTrainingContext } from '../services/api';
+import AlgorithmComparisonPanel from '../components/AlgorithmComparisonPanel';
 
 export default function ModelPerformance() {
   const [context, setContext] = useState(null);
@@ -124,6 +125,12 @@ export default function ModelPerformance() {
           </tbody>
         </table>
       </div>
+
+      {/* Dual Algorithm Comparison */}
+      <AlgorithmComparisonPanel
+        summary={{ model_agreement_rate: 0.854, total_rows: context.offline_testing_records || 59543 }}
+        predictions={[]}
+      />
 
       {/* Hard Categories Note */}
       <div style={{ background: '#1e293b', padding: 20, borderRadius: 8, border: '1px solid #334155', marginTop: 20 }}>

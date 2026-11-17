@@ -8,6 +8,7 @@ Implements the contract defined in docs/api_contract.md:
 - GET  /api/v1/training-context
 """
 
+from contextlib import asynccontextmanager
 import io
 import json
 import sys
@@ -34,15 +35,27 @@ from ml.src.config import (
 )
 from ml.src.predict import (
     explain_row_prediction,
+    get_tree_structure,
     load_model_package,
     predict_dataframe,
     validate_dataframe,
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Preload model artifacts on startup to avoid cold start latency."""
+    try:
+        load_model_package()
+        print("Model package loaded successfully into memory.")
+    except Exception as e:
+        print(f"Warning: Could not preload model package: {e}")
+    yield
+
 app = FastAPI(
     title="NetSentinel IDS API",
     description="Network Intrusion Detection System Inference API for UNSW-NB15",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS for local and staging frontend development
@@ -61,14 +74,16 @@ class ExplainRequest(BaseModel):
     )
 
 
-@app.on_event("startup")
-def startup_event():
-    """Preload model artifacts on startup to avoid cold start latency."""
-    try:
-        load_model_package()
-        print("Model package loaded successfully into memory.")
-    except Exception as e:
-        print(f"Warning: Could not preload model package: {e}")
+class PredictSingleRequest(BaseModel):
+    features: Dict[str, Any] = Field(
+        ..., description="Key-value mapping of 42 network flow attributes"
+    )
+
+
+class PredictBatchRequest(BaseModel):
+    rows: List[Dict[str, Any]] = Field(
+        ..., description="List of network flow attribute dictionaries"
+    )
 
 
 @app.get("/")
@@ -175,6 +190,110 @@ def explain_row(payload: ExplainRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate explanation: {str(e)}",
         )
+
+
+@app.post("/api/v1/predict/single")
+def predict_single(payload: PredictSingleRequest):
+    """Predicts a single network flow and returns live dual-model consensus, RF votes, and DT decision path."""
+    if not payload.features:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="features dictionary must not be empty.",
+        )
+    try:
+        exp = explain_row_prediction(payload.features)
+        pred_c = exp["predicted_class"]
+        sec_pred_c = exp["secondary_prediction"]
+        return {
+            "prediction": pred_c,
+            "confidence": exp["confidence"],
+            "secondaryPrediction": sec_pred_c,
+            "agreement": bool(pred_c == sec_pred_c),
+            "treeVotes": exp["random_forest_votes"],
+            "treeVoteList": exp.get("random_forest_tree_votes", []),
+            "decisionPath": exp["decision_path_details"],
+            "probabilities": exp["probabilities"],
+            "ruleTrace": exp["decision_tree_path"],
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to run single flow inference: {str(e)}",
+        )
+
+
+@app.post("/api/v1/predict/batch")
+def predict_batch(payload: PredictBatchRequest):
+    """Processes a batch of network flow dictionaries and returns dual-model predictions."""
+    if not payload.rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="rows list must not be empty.",
+        )
+    try:
+        df = pd.DataFrame(payload.rows)
+        return predict_dataframe(df, file_name="batch_api.csv")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to run batch inference: {str(e)}",
+        )
+
+
+@app.get("/api/v1/model/tree-structure")
+def tree_structure(depth: int = 4):
+    """Returns structural topology of the fitted Decision Tree up to specified depth."""
+    try:
+        return get_tree_structure(max_depth=min(depth, 6))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve tree structure: {str(e)}",
+        )
+
+
+@app.get("/api/v1/model/metadata")
+def model_metadata():
+    """Returns full metadata, architecture comparison, and feature names."""
+    if METADATA_ARTIFACT_PATH.exists():
+        with open(METADATA_ARTIFACT_PATH, "r") as f:
+            meta = json.load(f)
+    else:
+        meta = {}
+
+    package = load_model_package()
+    dt = package["secondary_pipeline"].named_steps["clf"]
+    rf = package["primary_pipeline"].named_steps["clf"]
+
+    return {
+        "model_version": "v2.0-clean",
+        "primary_model": {
+            "name": "RandomForestClassifier",
+            "type": "Ensemble (Bagging)",
+            "n_estimators": len(rf.estimators_),
+            "max_depth": rf.max_depth,
+            "decision_mechanism": "Majority voting across independent randomized decision trees",
+            "explainability": "100-tree vote breakdown and Gini feature importance",
+            "role": "Primary production classifier",
+        },
+        "secondary_model": {
+            "name": "DecisionTreeClassifier",
+            "type": "Single Tree",
+            "max_depth": dt.max_depth,
+            "total_nodes": int(dt.tree_.node_count),
+            "decision_mechanism": "Greedy recursive binary partitioning using Gini impurity",
+            "explainability": "Deterministic exact rule path from root to leaf",
+            "role": "Secondary interpretable model & agreement validator",
+        },
+        "classes": CLASSES,
+        "input_features": RAW_INPUT_FEATURES,
+        "engineered_features": [
+            "sbytes_per_spkt", "dbytes_per_dpkt", "byte_ratio", "pkt_ratio",
+            "ttl_ratio", "load_ratio", "log_dur", "log_sbytes", "log_dbytes",
+            "log_rate", "log_sload", "log_dload"
+        ],
+        "stored_metrics": meta,
+    }
 
 
 @app.get("/api/v1/training-context")

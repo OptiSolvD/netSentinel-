@@ -92,3 +92,35 @@ def test_explain_endpoint():
     assert len(data["decision_tree_path"]) > 0
     assert "random_forest_votes" in data
     assert data["random_forest_votes"]["total_trees"] == 100
+    assert "decision_path_details" in data
+    assert len(data["decision_path_details"]) > 0
+    assert "gini" in data["decision_path_details"][0]
+
+
+def test_predict_single_endpoint():
+    """Tests predict_single endpoint function directly."""
+    from backend.app.main import predict_single, PredictSingleRequest
+
+    sample_df = pd.read_csv("data/samples/sample_traffic.csv", nrows=1)
+    row_dict = sample_df.iloc[0].to_dict()
+
+    data = predict_single(PredictSingleRequest(features=row_dict))
+    assert "prediction" in data
+    assert "confidence" in data
+    assert "secondaryPrediction" in data
+    assert "agreement" in data
+    assert "treeVotes" in data
+    assert data["treeVotes"]["total_trees"] == 100
+    assert "decisionPath" in data
+    assert len(data["decisionPath"]) > 0
+
+
+def test_tree_structure_endpoint():
+    """Tests tree_structure endpoint function directly."""
+    from backend.app.main import tree_structure
+
+    data = tree_structure(depth=3)
+    assert "nodes" in data
+    assert "0" in data["nodes"]
+    assert data["nodes"]["0"]["feature"] == "sttl"
+    assert "gini" in data["nodes"]["0"]

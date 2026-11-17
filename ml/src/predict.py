@@ -266,6 +266,20 @@ def predict_dataframe(
                 "is_correct": bool(pred_c == actual),
             }
 
+        # Extract row feature dict for downstream explainability & simulation inspector
+        row_feat_dict = {}
+        for col in RAW_INPUT_FEATURES:
+            if col in df.columns:
+                val = df.iloc[i][col]
+                if pd.isna(val):
+                    row_feat_dict[col] = None
+                elif isinstance(val, (np.integer, int)):
+                    row_feat_dict[col] = int(val)
+                elif isinstance(val, (np.floating, float)):
+                    row_feat_dict[col] = round(float(val), 6)
+                else:
+                    row_feat_dict[col] = str(val)
+
         prediction_rows.append(
             {
                 "row_index": i,
@@ -280,6 +294,7 @@ def predict_dataframe(
                     "agrees_with_primary": bool(pred_c == sec_pred_c),
                 },
                 "ground_truth": gt_info,
+                "features": row_feat_dict,
             }
         )
 
@@ -367,8 +382,77 @@ def predict_dataframe(
     }
 
 
+def get_tree_structure(max_depth: int = 4) -> Dict[str, Any]:
+    """Extracts a structural representation of the Decision Tree up to max_depth."""
+    package = load_model_package()
+    dt_pipeline = package["secondary_pipeline"]
+    dt_clf = dt_pipeline.named_steps["clf"]
+    col_transformer = dt_pipeline.named_steps["prep"].named_steps["col_transform"]
+
+    try:
+        feat_names = list(col_transformer.get_feature_names_out())
+    except Exception:
+        feat_names = [f"feature_{i}" for i in range(dt_clf.n_features_in_)]
+
+    tree = dt_clf.tree_
+    nodes = {}
+
+    def recurse(node_id: int, depth: int):
+        if depth > max_depth or node_id == -1:
+            return
+
+        is_leaf = tree.children_left[node_id] == tree.children_right[node_id]
+        samples = int(tree.n_node_samples[node_id])
+        values = tree.value[node_id][0].tolist()
+        pred_idx = int(np.argmax(values))
+        pred_class = dt_clf.classes_[pred_idx]
+        gini = round(float(tree.impurity[node_id]), 4)
+
+        if not is_leaf:
+            f_idx = tree.feature[node_id]
+            f_name = feat_names[f_idx] if f_idx < len(feat_names) else f"feat_{f_idx}"
+            th = round(float(tree.threshold[node_id]), 4)
+            left_child = int(tree.children_left[node_id])
+            right_child = int(tree.children_right[node_id])
+
+            nodes[str(node_id)] = {
+                "id": node_id,
+                "depth": depth,
+                "is_leaf": False,
+                "feature": f_name,
+                "threshold": th,
+                "gini": gini,
+                "left": left_child,
+                "right": right_child,
+                "samples": samples,
+                "predicted_class": pred_class,
+                "class_distribution": values,
+            }
+            recurse(left_child, depth + 1)
+            recurse(right_child, depth + 1)
+        else:
+            nodes[str(node_id)] = {
+                "id": node_id,
+                "depth": depth,
+                "is_leaf": True,
+                "gini": gini,
+                "samples": samples,
+                "predicted_class": pred_class,
+                "class_distribution": values,
+            }
+
+    recurse(0, 0)
+    return {
+        "max_depth": int(dt_clf.max_depth or 12),
+        "total_nodes": int(tree.node_count),
+        "classes": list(dt_clf.classes_),
+        "root_id": 0,
+        "nodes": nodes,
+    }
+
+
 def explain_row_prediction(row_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """Provides decision tree rule path and random forest tree vote distribution for a single row."""
+    """Provides decision tree rule path, visual path nodes, and random forest tree vote distribution for a single row."""
     package = load_model_package()
     primary_model = package["primary_pipeline"]
     secondary_model = package["secondary_pipeline"]
@@ -393,30 +477,65 @@ def explain_row_prediction(row_dict: Dict[str, Any]) -> Dict[str, Any]:
     X_trans = dt_prep.transform(X_row)
     try:
         col_transformer = dt_prep.named_steps["col_transform"]
-        feat_names = col_transformer.get_feature_names_out()
+        feat_names = list(col_transformer.get_feature_names_out())
     except Exception:
         feat_names = [f"feat_{i}" for i in range(X_trans.shape[1])]
 
     node_indicator = dt_clf.decision_path(X_trans)
-    node_index = node_indicator.indices[
+    node_indices = node_indicator.indices[
         node_indicator.indptr[0] : node_indicator.indptr[1]
     ]
 
     rules = []
+    decision_path_details = []
     tree = dt_clf.tree_
-    for node_id in node_index:
-        if tree.children_left[node_id] != tree.children_right[node_id]:  # Not a leaf
+
+    for i, node_id in enumerate(node_indices):
+        is_leaf = tree.children_left[node_id] == tree.children_right[node_id]
+        samples = int(tree.n_node_samples[node_id])
+        values = tree.value[node_id][0].tolist()
+        node_pred = dt_clf.classes_[int(np.argmax(values))]
+        node_gini = round(float(tree.impurity[node_id]), 4)
+
+        if not is_leaf:
             feat_idx = tree.feature[node_id]
             feat_name = feat_names[feat_idx] if feat_idx < len(feat_names) else f"feature_{feat_idx}"
-            threshold = tree.threshold[node_id]
-            val = X_trans[0, feat_idx]
-            if val <= threshold:
-                rules.append(f"{feat_name} <= {threshold:.2f} (value: {val:.2f})")
-            else:
-                rules.append(f"{feat_name} > {threshold:.2f} (value: {val:.2f})")
+            threshold = float(tree.threshold[node_id])
+            val = float(X_trans[0, feat_idx])
+            direction = "left" if val <= threshold else "right"
+            next_node = int(node_indices[i + 1]) if i + 1 < len(node_indices) else None
+
+            cond_str = (
+                f"{feat_name} <= {threshold:.2f} (value: {val:.2f})"
+                if direction == "left"
+                else f"{feat_name} > {threshold:.2f} (value: {val:.2f})"
+            )
+            rules.append(cond_str)
+
+            decision_path_details.append({
+                "node_id": int(node_id),
+                "is_leaf": False,
+                "feature": feat_name,
+                "threshold": round(threshold, 4),
+                "value": round(val, 4),
+                "direction": direction,
+                "operator": "<=" if direction == "left" else ">",
+                "condition": f"{feat_name} {('<=' if direction == 'left' else '>')} {threshold:.2f}",
+                "samples": samples,
+                "gini": node_gini,
+                "predicted_class": node_pred,
+                "next_node_id": next_node,
+            })
         else:
-            leaf_class = dt_clf.classes_[np.argmax(tree.value[node_id])]
+            leaf_class = dt_clf.classes_[int(np.argmax(tree.value[node_id]))]
             rules.append(f"-> Classified as {leaf_class}")
+            decision_path_details.append({
+                "node_id": int(node_id),
+                "is_leaf": True,
+                "predicted_class": leaf_class,
+                "samples": samples,
+                "gini": node_gini,
+            })
 
     # 2. Random Forest Tree Votes
     rf_pipeline = primary_model
@@ -425,9 +544,12 @@ def explain_row_prediction(row_dict: Dict[str, Any]) -> Dict[str, Any]:
 
     X_rf_trans = rf_prep.transform(X_row)
     tree_votes = {c: 0 for c in classes}
+    tree_vote_list = []
+
     for estimator in rf_clf.estimators_:
         pred_idx = estimator.predict(X_rf_trans)[0]
         tree_class = rf_clf.classes_[int(pred_idx)]
+        tree_vote_list.append(tree_class)
         if tree_class in tree_votes:
             tree_votes[tree_class] += 1
 
@@ -437,6 +559,9 @@ def explain_row_prediction(row_dict: Dict[str, Any]) -> Dict[str, Any]:
         "predicted_class": pred_class,
         "confidence": round(confidence, 4),
         "probabilities": prob_dict,
-        "decision_tree_path": rules[:8],  # limit to top 8 most influential steps
+        "secondary_prediction": dt_clf.predict(X_trans)[0],
+        "decision_tree_path": rules,
+        "decision_path_details": decision_path_details,
         "random_forest_votes": tree_votes,
+        "random_forest_tree_votes": tree_vote_list,
     }

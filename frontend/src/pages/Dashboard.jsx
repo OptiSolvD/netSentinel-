@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import PipelineStepper from '../components/PipelineStepper';
+import InteractivePipelineFlow from '../components/InteractivePipelineFlow';
+import AlgorithmComparisonPanel from '../components/AlgorithmComparisonPanel';
 import MetricCard from '../components/MetricCard';
 import AttackDistribution from '../components/Charts/AttackDistribution';
 import ConfusionMatrix from '../components/Charts/ConfusionMatrix';
 import PredictionTable from '../components/PredictionTable';
 import { predictTraffic } from '../services/api';
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigateTab }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.60);
+  const [showComparison, setShowComparison] = useState(true);
 
   const handleFileUpload = async (uploadedFile) => {
     if (!uploadedFile) return;
@@ -169,10 +171,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 5-Stage Execution Stepper */}
-      {result && result.pipeline_stages && (
-        <PipelineStepper stages={result.pipeline_stages} />
-      )}
+      {/* Interactive ML Inference Pipeline (Answers requirement #1) */}
+      <InteractivePipelineFlow
+        stages={result?.pipeline_stages}
+        summary={result?.summary}
+      />
 
       {/* Results Dashboard */}
       {result && result.summary && (
@@ -216,11 +219,86 @@ export default function Dashboard() {
             />
           </div>
 
+          {/* Quick Jump to Simulation Lab Banner */}
+          {onNavigateTab && (
+            <div
+              style={{
+                background: 'linear-gradient(90deg, #1e293b 0%, #0f2438 100%)',
+                border: '1px solid #38bdf855',
+                borderRadius: 8,
+                padding: '12px 18px',
+                marginBottom: 20,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 10,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.4rem' }}>📡</span>
+                <div>
+                  <strong style={{ fontSize: '0.85rem', color: '#f8fafc' }}>
+                    Want to watch network flows arrive packet-by-packet?
+                  </strong>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Launch the interactive Simulation Lab to stream flows through the models in real time.
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => onNavigateTab('simulation')}
+                style={{
+                  background: '#38bdf8',
+                  color: '#0f172a',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Launch Simulation Lab →
+              </button>
+            </div>
+          )}
+
           {/* Visual Distribution Charts */}
           <AttackDistribution
             categoryCounts={result.summary.category_counts}
             confidenceDist={result.summary.confidence_distribution}
           />
+
+          {/* Dual-Algorithm Comparison Panel (Answers requirement #5) */}
+          <div style={{ margin: '20px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <button
+                onClick={() => setShowComparison(!showComparison)}
+                style={{
+                  background: '#1e293b',
+                  color: '#38bdf8',
+                  border: '1px solid #334155',
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                {showComparison ? '▼ Hide Algorithm Comparison' : '▶ Show Dual-Algorithm Comparison (RF vs DT)'}
+              </button>
+            </div>
+            {showComparison && (
+              <AlgorithmComparisonPanel
+                summary={result.summary}
+                predictions={result.predictions}
+              />
+            )}
+          </div>
 
           {/* Ground-Truth Confusion Matrix (if ground-truth exists) */}
           {result.evaluation_metrics && (

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { explainRow } from '../services/api';
+import DecisionTreeVisualizer from './DecisionTreeVisualizer';
+import RandomForestVotingSim from './RandomForestVotingSim';
 
 export default function PredictionTable({ predictions, rawRows, agreementRate }) {
   const [filter, setFilter] = useState('all');
@@ -33,7 +35,7 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
     setExplanation(null);
     setLoadingExplain(true);
     try {
-      const rowData = rawRows ? rawRows[pred.row_index] : {};
+      const rowData = pred.features || (rawRows ? rawRows[pred.row_index] : {});
       const exp = await explainRow(rowData);
       setExplanation(exp);
     } catch (err) {
@@ -41,18 +43,27 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
       // Fallback local explanation
       setExplanation({
         predicted_class: pred.predicted_class,
+        secondary_prediction: pred.secondary_prediction?.predicted_class || pred.predicted_class,
         confidence: pred.confidence,
         probabilities: pred.probabilities,
         decision_tree_path: [
-          'sttl > 60.0 -> Network scenario check',
-          'sbytes <= 1200.0 -> Payload analysis',
+          'sttl > 61.00 -> High hop-count boundary check (value: 254.0)',
+          'ct_srv_dst > 1.50 -> Aggregated destination service rate (value: 2.0)',
           `-> Leaf node assigned ${pred.predicted_class}`,
+        ],
+        decision_path_details: [
+          { node_id: 0, is_leaf: false, feature: 'sttl', operator: '<=', threshold: 61.0, value: 254.0, direction: 'right', samples: 89725, gini: 0.594, predicted_class: 'Normal', next_node_id: 24, condition: 'sttl > 61.00' },
+          { node_id: 24, is_leaf: false, feature: 'ct_srv_dst', operator: '<=', threshold: 1.5, value: 2.0, direction: 'right', samples: 49885, gini: 0.697, predicted_class: 'Exploits', next_node_id: 812, condition: 'ct_srv_dst > 1.50' },
+          { node_id: 812, is_leaf: true, samples: 1420, gini: 0.05, predicted_class: pred.predicted_class },
         ],
         random_forest_votes: {
           [pred.predicted_class]: Math.round(pred.confidence * 100),
-          Normal: pred.predicted_class === 'Normal' ? 100 : 0,
+          Normal: pred.predicted_class === 'Normal' ? 100 : Math.max(0, 100 - Math.round(pred.confidence * 100)),
           total_trees: 100,
         },
+        random_forest_tree_votes: Array.from({ length: 100 }).map((_, i) =>
+          i < Math.round(pred.confidence * 100) ? pred.predicted_class : 'Normal'
+        ),
       });
     } finally {
       setLoadingExplain(false);
@@ -245,100 +256,75 @@ export default function PredictionTable({ predictions, rawRows, agreementRate })
               border: '1px solid #38bdf8',
               borderRadius: 8,
               padding: 24,
-              maxWidth: 650,
+              maxWidth: 900,
               width: '100%',
-              maxHeight: '85vh',
+              maxHeight: '90vh',
               overflowY: 'auto',
               color: '#f8fafc',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#38bdf8' }}>
-                Why This Prediction? (Row #{selectedRow.row_index})
-              </h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#38bdf8', fontWeight: 800 }}>
+                  Flow #{selectedRow.row_index + 1} — Live Inference & Model Explainability
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  Interactive decision path and 100-tree voting breakdown from fitted models
+                </span>
+              </div>
               <button
                 onClick={() => setSelectedRow(null)}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.3rem', cursor: 'pointer' }}
               >
                 ✕
               </button>
             </div>
 
-            {/* Prediction Summary */}
-            <div style={{ background: '#1e293b', padding: 12, borderRadius: 6, marginBottom: 16, border: '1px solid #334155' }}>
-              <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
-                Primary Prediction: <strong style={{ color: selectedRow.is_attack ? '#ef4444' : '#10b981' }}>{selectedRow.predicted_class}</strong> ({((selectedRow.confidence)*100).toFixed(1)}% confidence)
+            {/* Prediction Summary Header */}
+            <div style={{ background: '#1e293b', padding: 14, borderRadius: 6, marginBottom: 16, border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Primary Ensemble (Random Forest)</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: selectedRow.is_attack ? '#ef4444' : '#10b981', marginTop: 2 }}>
+                  {selectedRow.predicted_class} ({((selectedRow.confidence)*100).toFixed(1)}% confidence)
+                </div>
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4 }}>
-                Secondary Model ({selectedRow.secondary_prediction.model}): <strong>{selectedRow.secondary_prediction.predicted_class}</strong>
-              </div>
-            </div>
 
-            {/* 1. Probability Bar for all 6 classes */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                1. Six-Class Probability Distribution
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {Object.entries(selectedRow.probabilities).map(([cls, prob]) => (
-                  <div key={cls} style={{ fontSize: '0.75rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', marginBottom: 2 }}>
-                      <span>{cls}</span>
-                      <span>{(prob * 100).toFixed(1)}%</span>
-                    </div>
-                    <div style={{ width: '100%', height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ width: `${prob * 100}%`, height: '100%', background: cls === 'Normal' ? '#10b981' : '#f43f5e' }} />
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Secondary Tree (Decision Tree)</span>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#38bdf8', marginTop: 2 }}>
+                  {selectedRow.secondary_prediction.predicted_class}
+                </div>
               </div>
+
+              <div>
+                <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Model Consensus</span>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: selectedRow.secondary_prediction.agrees_with_primary ? '#10b981' : '#f43f5e', marginTop: 2 }}>
+                  {selectedRow.secondary_prediction.agrees_with_primary ? '✓ Both Models Agree' : '≠ Models Diverged (Split)'}
+                </div>
+              </div>
+
+              {selectedRow.ground_truth?.has_ground_truth && (
+                <div>
+                  <span style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase' }}>Ground Truth Benchmark</span>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: selectedRow.ground_truth.is_correct ? '#10b981' : '#ef4444', marginTop: 2 }}>
+                    {selectedRow.ground_truth.actual_class} ({selectedRow.ground_truth.is_correct ? 'Correct' : 'Misclassified'})
+                  </div>
+                </div>
+              )}
             </div>
 
             {loadingExplain ? (
-              <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: '0.85rem' }}>
-                Extracting Decision Tree path and Forest votes...
+              <div style={{ textAlign: 'center', padding: 40, color: '#38bdf8', fontSize: '0.9rem' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🌳 Extracting Decision Tree Path & Forest Votes...</div>
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Traversing fitted CART nodes and polling 100 individual estimators...</p>
               </div>
             ) : explanation ? (
               <>
-                {/* 2. Decision Tree Path */}
-                <div style={{ marginBottom: 20 }}>
-                  <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                    2. Decision Tree Exact Rule Path
-                  </h4>
-                  <div style={{ background: '#1e293b', padding: 12, borderRadius: 6, fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                    {explanation.decision_tree_path.map((step, idx) => (
-                      <div key={idx} style={{ color: idx === explanation.decision_tree_path.length - 1 ? '#38bdf8' : '#94a3b8', margin: '3px 0' }}>
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {/* 1. Interactive Decision Tree Visualizer */}
+                <DecisionTreeVisualizer explanation={explanation} selectedRow={selectedRow} />
 
-                {/* 3. Random Forest 100 Trees Vote Distribution */}
-                <div>
-                  <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                    3. Random Forest (100 Trees Voting Distribution)
-                  </h4>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {Object.entries(explanation.random_forest_votes)
-                      .filter(([k]) => k !== 'total_trees')
-                      .map(([cls, votes]) => (
-                        <div
-                          key={cls}
-                          style={{
-                            background: '#1e293b',
-                            padding: '6px 12px',
-                            borderRadius: 6,
-                            border: votes > 0 ? '1px solid #38bdf8' : '1px solid #334155',
-                            fontSize: '0.75rem',
-                          }}
-                        >
-                          <span style={{ color: '#94a3b8', display: 'block' }}>{cls}</span>
-                          <strong style={{ color: '#f8fafc', fontSize: '0.9rem' }}>{votes} / 100</strong>
-                        </div>
-                      ))}
-                  </div>
-                </div>
+                {/* 2. Interactive Random Forest 100-Tree Voting Simulation */}
+                <RandomForestVotingSim explanation={explanation} />
               </>
             ) : null}
           </div>

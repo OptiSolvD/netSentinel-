@@ -75,6 +75,28 @@ export async function predictTraffic(file, confidenceThreshold = 0.60) {
   return await res.json();
 }
 
+export async function fetchTreeStructure(depth = 4) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/model/tree-structure?depth=${depth}`);
+    if (!res.ok) throw new Error('Failed to fetch tree structure');
+    return await res.json();
+  } catch (err) {
+    console.warn('Backend unavailable, using fallback tree topology', err);
+    return null;
+  }
+}
+
+export async function fetchModelMetadata() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/model/metadata`);
+    if (!res.ok) throw new Error('Failed to fetch model metadata');
+    return await res.json();
+  } catch (err) {
+    console.warn('Backend unavailable, using fallback metadata', err);
+    return null;
+  }
+}
+
 export async function explainRow(rowFeatures) {
   const res = await fetch(`${API_BASE_URL}/explain`, {
     method: 'POST',
@@ -85,6 +107,36 @@ export async function explainRow(rowFeatures) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to explain prediction');
+  }
+
+  return await res.json();
+}
+
+export async function predictSingleFlow(features) {
+  const res = await fetch(`${API_BASE_URL}/predict/single`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ features }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to predict single flow');
+  }
+
+  return await res.json();
+}
+
+export async function predictBatchFlows(rows) {
+  const res = await fetch(`${API_BASE_URL}/predict/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to predict batch flows');
   }
 
   return await res.json();
